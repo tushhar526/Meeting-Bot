@@ -1,62 +1,53 @@
 import logging
-import time
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException
+import re
 
 logger = logging.getLogger(__name__)
 
 
 class Meet:
-    def __init__(self, url, driver):
+    def __init__(self, url, page):
         self.url = url
-        self.driver = driver
+        self.page = page
 
     def join(self):
-
         logger.info("Handling Google meet's meeting join ...")
-        self.driver.get(self.url)
 
-        wait = WebDriverWait(self.driver, 10)
+        self.page.goto(self.url)
+
+        self.page.wait_for_load_state("networkidle")
 
         try:
-            name_input = wait.until(
-                EC.visibility_of_element_located(
-                    (
-                        By.XPATH,
-                        "//input[contains(@placeholder,'Your name') or @type='text']",
-                    )
-                )
+
+            logger.info("Finding the name input tag")
+            self.page.locator("input[placeholder = 'Your name']").fill("Meeting Bot")
+            logger.info("Entered name Meeting bot")
+
+            logger.info("Finding the joining button")
+
+            no_AV = self.page.get_by_role(
+                "button", name=re.compile("Continue without microphone and camera")
             )
 
-            if name_input:
-                name_input.clear()
-                name_input.send_keys("Meeting Bot")
-                logger.info("Entered name: Meeting Bot")
-                time.sleep(1)
-            else:
-                logger.warning("Name input field not found, proceeding anyway")
+            no_AV.click()
 
-            # wait.until(
-            #     lambda d: d.find_element(
-            #         By.XPATH, "//button[contains(., 'Join now') or contains(.,'Ask to join')]"
-            #     ).is_enabled()
-            # )
+            join_btn = self.page.get_by_role(
+                "button", name=re.compile("Join now|Ask to join")
+            )
 
-            join_btn = wait.until(
-                EC.element_to_be_clickable(
-                    (
-                        By.XPATH,
-                        "//button[contains(text(), 'Join now') or contains(text(), 'Ask to join')]",
-                    )
-                )
-            ).click()
-
-            # join_btn.click()
+            join_btn.click()
             logger.info("Pressed the Ask to Join btn")
-        except Exception as e:
-            logger.error(f" Error occured in joining google meet meeting due to = {e}")
 
-    def detect_end():
-        return False
+            return True
+        except Exception as e:
+            logger.warning(f" The type of error = {type(e)}")
+            logger.error(f"Google Meet specific Error = {e}")
+            return False
+
+    def detect_end(self):
+        try:
+            if self.page.get_by_text(re.compile(r"1 joined Just you")).is_visible():
+                return True
+
+            return False
+        except:
+            return False

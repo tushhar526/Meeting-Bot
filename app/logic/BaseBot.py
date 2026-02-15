@@ -1,11 +1,13 @@
 import time
 import logging
-from selenium import webdriver
 from app.helper.recording import AudioRecorder
 from app.helper.decorators import retry
 from app.logic.zoom import Zoom
 from app.logic.meet import Meet
 from app.logic.teams import Teams
+
+
+from playwright.sync_api import sync_playwright
 
 
 logger = logging.getLogger(__name__)
@@ -17,50 +19,25 @@ class BaseBot:
         self.job_id = job_id
         self.meeting_url = meeting_url
         self.recording_path = f"app/recordings/{self.job_id}.mp3"
-        self.driver = None
         self.handler = None
+        self.pw = None
+        self.browser = None
+        self.context = None
+        self.page = None
         self.is_meeting_active = False
         self.recorder = AudioRecorder(self.recording_path)
 
     def setup_driver(self):
         try:
-            options = webdriver.ChromeOptions()
 
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option("useAutomationExtension", False)
-
-            options.add_argument(
-                "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            self.pw = sync_playwright().start()
+            self.browser = self.pw.chromium.launch(
+                headless=False,
             )
+            self.context = self.browser.new_context(permissions=[])
+            self.page = self.context.new_page()
 
-            options.add_argument("--disable-gpu")
-            options.add_argument("--start-maximize")
-            options.add_argument("--diable-notifications")
-            # options.add_argument("--use-fake-ui-for-media-stream")
-            # options.add_argument("--use-fake-device-for-media-stream")
-            options.add_experimental_option(
-                "prefs",
-                {
-                    "profile.default_content_setting_values.media_stream_mic": 2,
-                    "profile.default_content_setting_values.media_stream_camera": 2,
-                    "profile.default.content_setting_values.notification": 2,
-                },
-            )
-
-            self.driver = webdriver.Chrome(options=options)
-
-            stealth_js = """
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => false,
-        });
-        """
-
-            self.driver.execute_cdp_cmd(
-                "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js}
-            )
-
-            logger.info(f" Chrome webdriver setup is successful")
+            logger.info(f" Chrome Browser setup is successful")
             return True
 
         except Exception as e:
@@ -69,11 +46,11 @@ class BaseBot:
 
     def setup_handler(self):
         if "zoom.us" in self.meeting_url:
-            self.handler = Zoom(driver=self.driver, url=self.meeting_url)
+            self.handler = Zoom(url=self.meeting_url, page=self.page)
         elif "meet.google.com" in self.meeting_url:
-            self.handler = Meet(driver=self.driver, url=self.meeting_url)
+            self.handler = Meet(self.meeting_url, page=self.page)
         elif "teams.live.com" in self.meeting_url:
-            self.handler = Teams(driver=self.driver, url=self.meeting_url)
+            self.handler = Teams(url=self.meeting_url, page=self.page)
         else:
             raise Exception("Unsupported Meeting Platform")
 
@@ -158,9 +135,10 @@ class BaseBot:
 
         self.is_meeting_active = False
 
-        if self.driver:
+        if self.browser and self.pw:
             try:
-                self.driver.quit()
+                self.browser.close()
+                self.pw.stop()
                 logger.info(
                     f" Browser closed as the meeting ended for Job {self.job_id}"
                 )
