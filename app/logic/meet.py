@@ -45,7 +45,9 @@ class Meet:
 
     def detect_end(self):
         try:
-            if self.page.get_by_text(re.compile(r"1 joined Just you")).is_visible():
+            if self.page.get_by_text(
+                re.compile("No one else is in this meeting")
+            ).is_visible():
                 return True
 
             return False

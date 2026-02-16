@@ -20,7 +20,7 @@ class AudioRecorder:
             system = platform.system()
 
             if system == "Windows":
-                audio_input = "Microphone (Realtek(R) Audio)"
+                audio_input = "Stereo Mix (Realtek(R) Audio)"
                 ffmpeg_input_format = "dshow"
             # elif system == "Darwin":
             #     audio_input = ":0"
@@ -58,8 +58,9 @@ class AudioRecorder:
             self.is_recording = False
 
             try:
-                self.ffmpeg_process.stdin.write(b"q")
+                self.ffmpeg_process.stdin.write(b"q\n")
                 self.ffmpeg_process.stdin.flush()
+                self.ffmpeg_process.stdin.close()
 
                 logger.info("Sent the q command to Ffmpeg")
 
@@ -86,7 +87,12 @@ class AudioRecorder:
                     self.ffmpeg_process.kill()
                     self.ffmpeg_process.wait()
                     logger.info("Recording process killed successfully")
-                    return True
+
+                finally:
+                    self.ffmpeg_process = None
+                    
+                return True
+            
         except Exception as e:
             logger.warning(f"Recording failed to stop due to error = {e}")
             return False
