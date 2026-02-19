@@ -1,0 +1,44 @@
+FROM python:3.11-slim
+WORKDIR /app
+RUN apt update && apt install -y \
+    ffmpeg \
+    pulseaudio \
+    redis-server \
+    pulseaudio-utils \
+    libpulse0 \
+    libpulse-dev \
+    locales \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
+
+RUN useradd -m -s /bin/bash audiobot 
+
+USER root
+RUN mkdir -p /var/run/user/1000/pulse && \
+    chown -R audiobot:audiobot /app /var/run/user/1000
+
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY start.sh .
+
+RUN chown -R audiobot:audiobot /app
+
+RUN chmod +x start.sh
+RUN chown audiobot:audiobot start.sh
+
+RUN mkdir -p /etc/pulse && \
+    echo "load-module module-null-sink sink_name=auto_null_sink_for_meetings" >> /etc/pulse/default.pa
+
+USER audiobot
+
+ENV PULSE_SERVER=unix:/var/run/user/1000/pulse/native
+ENV XDG_RUNTIME_DIR=/var/run/user/1000
+ENV LANG=en_US.UTF.8
+ENV LC_ALL=en_US.UTF-8
+ENV PYTHONUNBUFFERED=1
+
+CMD [ "./start.sh" ]

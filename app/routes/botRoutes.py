@@ -14,13 +14,7 @@ def create_job():
         return jsonify({"message": "Meeting url is required"}), 401
 
     job = create_bot(meeting_url)
-
-    print(
-        "Broker url = ",
-        celery.conf.broker_url,
-        " and result backend = ",
-        celery.conf.result_backend,
-    )
+    
     start_bot.delay(job.job_id)
 
     return (
