@@ -5,9 +5,8 @@ logger = logging.getLogger(__name__)
 
 
 class Teams:
-    def __init__(self, driver, url, page):
+    def __init__(self,url, page):
         self.url = url
-        self.driver = driver
         self.page = page
 
     def join(self):

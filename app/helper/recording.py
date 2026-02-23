@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class PulseAudio:
+
     def __init__(self, job_id):
         self.job_id = job_id
         self.sink_name = f"sink_{self.job_id}"
@@ -14,58 +15,55 @@ class PulseAudio:
 
     def create_sink(self):
         try:
-            result = subprocess.run(
+            result = subprocess.Popen(
                 [
                     "pactl",
                     "load-module",
                     "module-null-sink",
                     f"sink_name={self.sink_name}",
-                    f'sink_properties = device.description="Meeting_{self.job_id}"',
+                    f'sink_properties=device.description="Meeting_{self.job_id}"',
                 ],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=10,
             )
 
+            stdout, stderr = result.communicate()
+
             if result.returncode != 0:
-                logger.error(
-                    f"Failed to create pulse audio sink due to = {result.stderr}"
-                )
+                logger.error(f"Failed to create pulse audio sink due to = {stderr}")
                 return False
 
-            self.module_id = int(result.stdout.strip())
+            self.module_id = int(stdout.strip())
 
             logger.info(
                 f"Created a pulse audio sink with sink name = {self.sink_name} and with module id = {self.module_id}"
             )
             return True
         except Exception as e:
-            logger.error("Error occured in running subprocess")
+            logger.error(f"Error occured in running subprocess {e}")
             return False
 
     def get_moniter(self):
         try:
-            result = subprocess.run(
-                ["pactl", "list", "sink"], capture_output=True, text=True, timeout=10
+            result = subprocess.Popen(
+                ["pactl", "list", "sources", "short"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
             )
 
+            stdout, stderr = result.communicate()
+
             if result.returncode != 0:
-                logger.error(f"couldn't list pulse audio sinks due to {result.stderr}")
+                logger.error(f"couldn't list pulse audio sinks due to {stderr}")
                 return None
 
-            lines = result.stdout.split("\n")
-            in_traget_sink = False
+            lines = stdout.split("\n")
 
             for line in lines:
-                if f"Name : {self.sink_name}" in line:
-                    in_traget_sink = True
-                if in_traget_sink and "Moniter Source" in line:
-                    moniter_device = line.splite(": ")[1].strip()
-                    logger.info(
-                        f" Found moniter for sink {self.sink_name} : {moniter_device}"
-                    )
-
-                    return moniter_device
+                if f"{self.sink_name}.monitor" in line:
+                    return line.split()[1]
 
             logger.warning(f"Couldn't Find moniter device for sink {self.sink_name}")
             return None
@@ -78,16 +76,18 @@ class PulseAudio:
             logger.warning("No module id present to delete")
             return False
         try:
-            result = subprocess.run(
+            result = subprocess.Popen(
                 ["pactl", "unload-module", str(self.module_id)],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=10,
             )
+
+            stdout, stderr = result.communicate()
 
             if result.returncode != 0:
                 logger.error(
-                    f"Couldn't delete the sink named {self.sink_name} due to {result.stderr}"
+                    f"Couldn't delete the sink named {self.sink_name} due to {stderr}"
                 )
                 return False
 
@@ -105,33 +105,77 @@ class AudioRecorder:
         self.output_path = output_path
         self.ffmpeg_process = None
         self.pulse_audio = PulseAudio(job.job_id)
-        self.moiter_device = None
+        self.monitor_device = None
         self.is_recording = False
 
-    @property
     def prepare_sink(self):
         if not self.pulse_audio.create_sink():
             return False
-
-        os.environ["PULSE_SINK"] = self.get_sink_name
         return True
+
+    def wait_for_chromium_audio(self, timeout=60):
+        start = time.time()
+
+        while time.time() - start < timeout:
+            result = subprocess.run(
+                ["pactl", "list", "sink-inputs"],
+                capture_output=True,
+                text=True,
+            )
+
+            if self.get_sink_name in result.stdout or "Chromium" in result.stdout:
+                logger.info("Chromium audio stream detected")
+                return True
+
+            time.sleep(1)
+
+        return False
 
     def start(self):
         try:
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
 
-            self.moiter_device = self.pulse_audio.get_moniter()
+            self.monitor_device = self.pulse_audio.get_moniter()
 
-            if not self.moiter_device:
+            if not self.monitor_device:
                 logger.error("Failed to get moniter")
                 return False
 
-            cmd = f'ffmpeg -f pulse -i {self.moiter_device} -c:a -aac -q:a 5 -y "{self.output_path}"'
+            logger.info("Waiting for Chromium audio stream...")
+            if not self.wait_for_chromium_audio():
+                logger.error("Chromium never produced audio")
+                return False
+
+            subprocess.run(
+                ["pactl", "set-sink-mute", self.get_sink_name, "0"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            subprocess.run(
+                ["pactl", "set-sink-volume", self.get_sink_name, "100%"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            cmd = [
+                "ffmpeg",
+                "-f",
+                "pulse",
+                "-i",
+                self.monitor_device,
+                "-ac","2",
+                "-c:a",
+                "libmp3lame",
+                "-q:a","5",
+                "-y",
+                self.output_path,
+            ]
 
             self.ffmpeg_process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
 
             logger.info(f" Starting FFmpeg recording with command = {cmd}")

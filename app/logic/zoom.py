@@ -14,7 +14,6 @@ class Zoom:
         logger.info("Handling Zoom meeting join...")
 
         self.url = self.url.replace("/j/", "/wc/join/")
-
         self.page.goto(self.url)
         self.page.wait_for_load_state("networkidle")
 
@@ -26,6 +25,18 @@ class Zoom:
             join_btn = self.page.get_by_role("button", name=re.compile("Join"))
 
             join_btn.click()
+
+            # logger.info("Finding more button")
+            # more_btn = self.page.get_by_role("button", name=re.compile("More"))
+            # if more_btn:
+            #     logger.info("Clicked more button")
+            #     more_btn.click()
+
+            # logger.info("Finding setting button")
+            # setting_btn = self.page.get_by_role("button",name=re.compile("Setting"))
+            # if setting_btn:
+            #     logger.info("Clicking the setting button")
+            #     setting_btn.click()
 
             return True
 

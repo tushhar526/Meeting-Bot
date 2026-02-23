@@ -1,11 +1,13 @@
 #!/bin/bash
 
 set -e
+export USER_ID=$(id -u)
+export XDG_RUNTIME_DIR=/var/run/user/$USER_ID
+export PULSE_SERVER=unix:/var/run/user/$USER_ID/pulse/native
 
-# mkdir -p /var/run/user/1000/pulse
-# chown -R audiobot:audiobot /var/run/user/1000/pulse
-
-chmod 700 /var/run/user/1000/pulse
+mkdir -p $XDG_RUNTIME_DIR/pulse
+chmod 700 $XDG_RUNTIME_DIR
+chmod 700 $XDG_RUNTIME_DIR/pulse
 
 echo "Starting pulse audio daemon"
 pulseaudio --daemonize=yes \
@@ -13,8 +15,8 @@ pulseaudio --daemonize=yes \
            --exit-idle-time=-1 \
            --log-target=stderr \
            --load="module-native-protocol-unix" \
-           --load="module-native-protocol-tcp listen=127.0.0.1" \
-           --load="module-null-sink" 2>&1 || echo "Pulse audio already running or error (continuing)"
+           --load="module-native-protocol-tcp listen=127.0.0.1"
+        #    --load="module-null-sink" 2>&1 || echo "Pulse audio already running or error (continuing)"
 
 sleep 2
 
