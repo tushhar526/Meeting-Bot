@@ -3,6 +3,7 @@ import logging
 from app.helper.recording import AudioRecorder
 import subprocess
 import os
+import re
 from app.helper.decorators import retry
 from app.models.jobModel import JobModel
 from app.logic.zoom import Zoom
@@ -85,8 +86,6 @@ class BaseBot:
             raise ValueError("Unsupported meeting platform")
 
     def wait_and_assign_sink(self, timeout=20):
-        import re
-        import time
 
         target_sink = self.recorder.get_sink_name
         start_time = time.time()
