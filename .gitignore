@@ -1,2 +1,5 @@
 app.log
 app/recordings/
+__pycache__/
+*.pyc
+instance/*.db

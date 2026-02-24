@@ -89,6 +89,7 @@ class BaseBot:
 
         target_sink = self.recorder.get_sink_name
         start_time = time.time()
+        print("OKAY i updated this snippet")
 
         logger.info(
             f"Waiting for Chromium to appear in PulseAudio (Target: {target_sink})..."
@@ -105,7 +106,7 @@ class BaseBot:
             )
 
             for input_index, app_name in matches:
-                if "chrom" in app_name.lower():
+                if "chrome" in app_name.lower():
                     logger.info(
                         f"Found Chromium stream (Input #{input_index}). Moving to {target_sink}"
                     )
@@ -120,7 +121,6 @@ class BaseBot:
         logger.error("Chromium never connected to PulseAudio within timeout.")
         return False
 
-    @retry(times=3, delay=5)
     def join_meeting(self):
 
         if not self.handler.join():
@@ -151,12 +151,12 @@ class BaseBot:
                     last_check = time.time()
 
                     if self.handler.detect_end():
-                        logger.info(
-                            "The meeting seems to be ended, the bot has entered Grace period"
-                        )
-                        time.sleep(60)
+                        # logger.info(
+                        #     "The meeting seems to be ended, the bot has entered Grace period"
+                        # )
+                        # time.sleep(60)
 
-                        if self.handler.detect_end():
+                        # if self.handler.detect_end():
                             logger.info(
                                 "The grace period has ended and Meeting still is at end as detect_end returned true"
                             )
@@ -168,58 +168,58 @@ class BaseBot:
                 logger.error(f" Failed to moniter the meeting due to error = {e}")
                 break
 
-    def check_chrome_sink(self):
-        try:
-            chrome_check = subprocess.run(
-                ["pgrep", "-f", "chromium"], capture_output=True, text=True, timeout=5
-            )
+    # def check_chrome_sink(self):
+    #     try:
+    #         chrome_check = subprocess.run(
+    #             ["pgrep", "-f", "chromium"], capture_output=True, text=True, timeout=5
+    #         )
 
-            if chrome_check.returncode != 0:
-                logger.error("❌ Chrome process NOT running")
-                return
+    #         if chrome_check.returncode != 0:
+    #             logger.error("❌ Chrome process NOT running")
+    #             return
 
-            pids = chrome_check.stdout.strip().split("\n")
-            logger.info(f"✓ Chrome PIDs found: {pids}")
+    #         pids = chrome_check.stdout.strip().split("\n")
+    #         logger.info(f"✓ Chrome PIDs found: {pids}")
 
-            result = subprocess.run(
-                ["pactl", "list", "sink-inputs"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+    #         result = subprocess.run(
+    #             ["pactl", "list", "sink-inputs"],
+    #             capture_output=True,
+    #             text=True,
+    #             timeout=10,
+    #         )
 
-            all_sink = subprocess.run(
-                ["pactl", "list", "sinks", "short"], capture_output=True, text=True
-            )
+    #         all_sink = subprocess.run(
+    #             ["pactl", "list", "sinks", "short"], capture_output=True, text=True
+    #         )
 
-            if all_sink.stdout.strip():
-                logger.info(f"The sinks present are = {all_sink.stdout}")
+    #         if all_sink.stdout.strip():
+    #             logger.info(f"The sinks present are = {all_sink.stdout}")
 
-            logger.info(f"Sink inputs output:\n{result.stdout}")
+    #         logger.info(f"Sink inputs output:\n{result.stdout}")
 
-            if not result.stdout.strip():
-                logger.error("❌ NO applications connected to PulseAudio at all")
-                logger.error("This means Chrome is using ALSA directly, not PulseAudio")
-                logger.error("You MUST use route_chrome_to_sink() to move it")
-                return
+    #         if not result.stdout.strip():
+    #             logger.error("❌ NO applications connected to PulseAudio at all")
+    #             logger.error("This means Chrome is using ALSA directly, not PulseAudio")
+    #             logger.error("You MUST use route_chrome_to_sink() to move it")
+    #             return
 
-            lines = result.stdout.split("\n")
-            chrome_found = False
+    #         lines = result.stdout.split("\n")
+    #         chrome_found = False
 
-            for i, line in enumerate(lines):
-                if "application.name" in line and "chromium" in line.lower():
-                    chrome_found = True
-                    logger.info(f"✓ Chrome found in sink inputs at line {i}")
-                    for j in range(max(0, i - 5), min(len(lines), i + 5)):
-                        logger.info(f"  {lines[j]}")
-                    break
+    #         for i, line in enumerate(lines):
+    #             if "application.name" in line and "chromium" in line.lower():
+    #                 chrome_found = True
+    #                 logger.info(f"✓ Chrome found in sink inputs at line {i}")
+    #                 for j in range(max(0, i - 5), min(len(lines), i + 5)):
+    #                     logger.info(f"  {lines[j]}")
+    #                 break
 
-            if not chrome_found:
-                logger.error("❌ Chrome NOT in PulseAudio sink inputs")
-                logger.error("Chrome is using ALSA, not PulseAudio")
+    #         if not chrome_found:
+    #             logger.error("❌ Chrome NOT in PulseAudio sink inputs")
+    #             logger.error("Chrome is using ALSA, not PulseAudio")
 
-        except Exception as e:
-            logger.error(f"Error checking Chrome sink: {e}")
+    #     except Exception as e:
+    #         logger.error(f"Error checking Chrome sink: {e}")
 
     @retry(times=3, delay=5)
     def run(self):
@@ -227,24 +227,26 @@ class BaseBot:
             if not self.recorder.prepare_sink():
                 return False
 
-            time.sleep(2)
+            # time.sleep(2)
 
             if not self.setup_driver():
                 return False
 
             self.setup_handler()
 
+            logger.info(f"Starting Recording for meeting job {self.job_id}")
+            if not self.recorder.start():
+                return False
+
+            # if not self.wait_and_assign_sink():
+            #     logger.error("Couldn't assign Sink to the chromium")
+            #     return False
+
+            logger.info(f"Joining meeting for job {self.job_id}")
             if not self.join_meeting():
                 return False
 
-            if not self.wait_and_assign_sink():
-                logger.error("Couldn't assign Sink to the chromium")
-                return False
-
-            self.check_chrome_sink()
-
-            if not self.recorder.start():
-                return False
+            # self.check_chrome_sink()
 
             logger.info(f"Meeting Joined for Job {self.job_id} and recording started")
 

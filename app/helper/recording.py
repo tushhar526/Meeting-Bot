@@ -2,6 +2,7 @@ import os
 import logging
 import subprocess
 import time
+from app.extension import celery
 
 logger = logging.getLogger(__name__)
 
@@ -107,29 +108,30 @@ class AudioRecorder:
         self.pulse_audio = PulseAudio(job.job_id)
         self.monitor_device = None
         self.is_recording = False
+        self.record_log = None
 
     def prepare_sink(self):
         if not self.pulse_audio.create_sink():
             return False
         return True
 
-    def wait_for_chromium_audio(self, timeout=60):
-        start = time.time()
+    # def wait_for_chromium_audio(self, timeout=60):
+    #     start = time.time()
 
-        while time.time() - start < timeout:
-            result = subprocess.run(
-                ["pactl", "list", "sink-inputs"],
-                capture_output=True,
-                text=True,
-            )
+    #     while time.time() - start < timeout:
+    #         result = subprocess.run(
+    #             ["pactl", "list", "sink-inputs"],
+    #             capture_output=True,
+    #             text=True,
+    #         )
 
-            if self.get_sink_name in result.stdout or "Chromium" in result.stdout:
-                logger.info("Chromium audio stream detected")
-                return True
+    #         if self.get_sink_name in result.stdout or "Chromium" in result.stdout:
+    #             logger.info("Chromium audio stream detected")
+    #             return True
 
-            time.sleep(1)
+    #         time.sleep(1)
 
-        return False
+    #     return False
 
     def start(self):
         try:
@@ -141,10 +143,10 @@ class AudioRecorder:
                 logger.error("Failed to get moniter")
                 return False
 
-            logger.info("Waiting for Chromium audio stream...")
-            if not self.wait_for_chromium_audio():
-                logger.error("Chromium never produced audio")
-                return False
+            # logger.info("Waiting for Chromium audio stream...")
+            # if not self.wait_for_chromium_audio():
+            #     logger.error("Chromium never produced audio")
+            #     return False
 
             subprocess.run(
                 ["pactl", "set-sink-mute", self.get_sink_name, "0"],
@@ -160,10 +162,18 @@ class AudioRecorder:
 
             cmd = [
                 "ffmpeg",
+                "-flags",
+                "low_delay",
                 "-f",
                 "pulse",
+                "-analyzeduration",
+                "100k",
+                "-probesize",
+                "32k",
                 "-i",
                 self.monitor_device,
+                "-af",
+                "silenceremove=start_periods=1:start_duration=0.2:start_threshold=-40dB"
                 "-ac",
                 "2",
                 "-c:a",
@@ -174,10 +184,13 @@ class AudioRecorder:
                 self.output_path,
             ]
 
+            env = os.environ.copy()
+            env["PULSE_LATENCY_MSEC"] = "30"
+
+            self.record_log = open("app.log", "a")
+
             self.ffmpeg_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                cmd, stdout=subprocess.DEVNULL, stderr=self.record_log, env=env
             )
 
             logger.info(f" Starting FFmpeg recording with command = {cmd}")
@@ -191,7 +204,13 @@ class AudioRecorder:
             return False
 
     def stop(self):
+
+        if not self.record_log:
+            self.record_log.close()
+            self.record_log = None
+
         if self.ffmpeg_process is None:
+
             logger.info("Recording is already inactive")
             return True
 
