@@ -1,6 +1,6 @@
 from app.extension import db
-from sqlalchemy import String, Integer, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Integer, DateTime, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
 
@@ -9,12 +9,20 @@ class JobModel(db.Model):
 
     job_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     job_url: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now())
+    status: Mapped[str] = mapped_column(String, nullable=False, default="Registered")
+    platform: Mapped[str] = mapped_column(String,nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     audio_path: Mapped[str] = mapped_column(String, nullable=True)
-    transcript_path: Mapped[str] = mapped_column(String, nullable=True)
+    # transcript_path: Mapped[str] = mapped_column(String, nullable=True)
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    user = relationship("UserModel", back_populates="jobs")
+
+    def save(self):
+        db.session.add(self)
+        db.session.commit()
 
     @property
     def to_json(self):

@@ -1,15 +1,25 @@
 import logging
 from flask import Flask
+from flask_cors import CORS
 from app.config import Config
-from app.extension import db, migrate, celery
+from app.extension import db, migrate, celery, jwt
 from app.routes.botRoutes import bot_bp
+from dotenv import load_dotenv
 
 
 def create_app():
     app = Flask(__name__)
+    CORS(
+        app,
+        resources={r"/bot/*": {"origins": "http://localhost:5173"}},
+        supports_credentials=True,
+    )
+
+    load_dotenv()
 
     app.config.from_object(Config)
     db.init_app(app)
+    jwt.init_app(app)
     migrate.init_app(app, db)
 
     celery.conf.update(

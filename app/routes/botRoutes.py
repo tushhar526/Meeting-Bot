@@ -1,28 +1,12 @@
-from flask import Blueprint, request, jsonify
-from app.controller.meetbot import create_bot, start_bot
-from app.extension import celery
+from flask import Blueprint, request
+from app.controller.botController import create_bot
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
 bot_bp = Blueprint("bot_bp", __name__, url_prefix="/bot")
 
 
 @bot_bp.route("/meeting/start", methods=["POST"])
+@jwt_required()
 def create_job():
-    data = request.json
-    meeting_url = data.get("meeting_url")
-
-    if not meeting_url:
-        return jsonify({"message": "Meeting url is required"}), 401
-
-    job = create_bot(meeting_url)
-    
-    start_bot.delay(job.job_id)
-
-    return (
-        jsonify(
-            {
-                "message": "recording started succesfully",
-                "job": job.to_json,
-            }
-        ),
-        200,
-    )
+    user_id = get_jwt_identity()
+    return create_bot(request, user_id)

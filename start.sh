@@ -31,7 +31,7 @@ sleep 3
 redis-cli ping || echo "Redis is not working"
 
 echo "Starting celery worker"
-celery -A app.celery_app:celery worker --pool=solo --loglevel=info &
+celery -A app.celery_app:celery worker --concurrency=4 --loglevel=info &
 CELERY_PID=$!
 
 echo "Starting the bot app"

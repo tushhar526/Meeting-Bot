@@ -3,3 +3,4 @@ app/recordings/
 __pycache__/
 *.pyc
 instance/*.db
+.env

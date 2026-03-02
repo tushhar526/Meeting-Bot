@@ -19,50 +19,79 @@ logger = logging.getLogger(__name__)
 
 class BaseBot:
 
-    def __init__(self, job_id, meeting_url):
-        job = JobModel.query.get(job_id)
+    def __init__(self, job_id, meeting_url, output_path):
         self.meeting_url = meeting_url
-        self.job = job
         self.job_id = job_id
-        self.recording_path = f"app/recordings/{self.job_id}.mp3"
+        self.recording_path = output_path
         self.handler = None
         self.pw = None
         self.browser = None
         self.context = None
         self.page = None
         self.is_meeting_active = False
-        self.recorder = AudioRecorder(job=job, output_path=self.recording_path)
+        self.recorder = AudioRecorder(job_id, output_path=self.recording_path)
+        self.result = "Failed"
+
+    def update_Status(self, status):
+        job = JobModel.query.get(self.job_id)
+        if job:
+            job.status = status
+            job.save()
 
     def setup_driver(self):
         try:
+
+            profile_dir = f"/tmp/chrome_profile_{self.job_id}"
+
             job_env = {
                 **os.environ,
                 "LD_PRELOAD": "libpulse.so.0",
                 "ALSA_CONFIG_PATH": "/etc/asound.conf",
                 "PULSE_SINK": self.recorder.get_sink_name,
                 "PULSE_SERVER": "unix:/var/run/user/1000/pulse/native",
+                "PULSE_LATENCY_MSEC": "30",
             }
 
             self.pw = sync_playwright().start()
 
-            self.browser = self.pw.chromium.launch(
+            self.context = self.pw.chromium.launch_persistent_context(
+                user_data_dir=profile_dir,  
                 headless=True,
                 env=job_env,
+                permissions=["camera", "microphone"],
                 ignore_default_args=["--mute-audio"],
                 args=[
                     "--autoplay-policy=no-user-gesture-required",
                     "--use-fake-ui-for-media-stream",
                     "--use-fake-device-for-media-stream",
                     "--no-sandbox",
-                    "--disable-gpu",
-                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",  
                     "--enable-features=WebRTCPulseAudio",
-                    "--alsa-output-device=pulse",
                 ],
             )
 
-            self.context = self.browser.new_context(permissions=[])
-            self.page = self.context.new_page()
+            # self.browser = self.pw.chromium.launch(
+            #     headless=True,
+            #     env=job_env,
+            #     ignore_default_args=["--mute-audio"],
+            #     args=[
+            #         "--autoplay-policy=no-user-gesture-required",
+            #         "--use-fake-ui-for-media-stream",
+            #         "--use-fake-device-for-media-stream",
+            #         "--no-sandbox",
+            #         "--disable-gpu",
+            #         "--disable-dev-shm-usage",
+            #         "--enable-features=WebRTCPulseAudio",
+            #         "--alsa-output-device=pulse",
+            #     ],
+            # )
+
+            # self.context = self.browser.new_context(permissions=[])
+            # self.page = self.context.new_page()
+
+            self.page = (
+                self.context.pages[0] if self.context.pages else self.context.new_page()
+            )
 
             logger.info("Chrome Browser setup is successful")
             return True
@@ -85,40 +114,29 @@ class BaseBot:
         if not self.handler:
             raise ValueError("Unsupported meeting platform")
 
-    def wait_and_assign_sink(self, timeout=20):
-
-        target_sink = self.recorder.get_sink_name
+    def wait_for_stream(self, timeout=15):
         start_time = time.time()
-        print("OKAY i updated this snippet")
-
         logger.info(
-            f"Waiting for Chromium to appear in PulseAudio (Target: {target_sink})..."
+            "Waiting for Chrome audio stream to begin before recording to avoid empty silence..."
         )
 
         while time.time() - start_time < timeout:
             result = subprocess.run(
                 ["pactl", "list", "sink-inputs"], capture_output=True, text=True
             )
-            output = result.stdout
 
-            matches = re.findall(
-                r"Sink Input #(\d+).*?application\.name = \"(.*?)\"", output, re.DOTALL
-            )
+            # Check if chrome/chromium is connected yet.
+            if "chrome" in result.stdout.lower() or "chromium" in result.stdout.lower():
+                logger.info(
+                    "Chromium audio stream detected! Starting ffmpeg recording immediately."
+                )
+                return True
 
-            for input_index, app_name in matches:
-                if "chrome" in app_name.lower():
-                    logger.info(
-                        f"Found Chromium stream (Input #{input_index}). Moving to {target_sink}"
-                    )
-                    move_res = subprocess.run(
-                        ["pactl", "move-sink-input", input_index, target_sink]
-                    )
-                    if move_res.returncode == 0:
-                        return True
+            time.sleep(0.2)
 
-            time.sleep(1)
-
-        logger.error("Chromium never connected to PulseAudio within timeout.")
+        logger.warning(
+            "Chromium stream not detected within timeout, starting recording anyway."
+        )
         return False
 
     def join_meeting(self):
@@ -129,6 +147,8 @@ class BaseBot:
         self.is_meeting_active = True
         self.job
         logger.info("Metting started")
+        # self.job.status = "In Meeting"
+        # self.job.save()
         return True
 
     def detect_meeting_end(self, timeout_min=120):
@@ -157,11 +177,13 @@ class BaseBot:
                         # time.sleep(60)
 
                         # if self.handler.detect_end():
-                            logger.info(
-                                "The grace period has ended and Meeting still is at end as detect_end returned true"
-                            )
-                            self.is_meeting_active = False
-                            break
+                        logger.info(
+                            "The grace period has ended and Meeting still is at end as detect_end returned true"
+                        )
+                        # self.job.status = "Meeting Ended"
+                        # self.job.save()
+                        self.is_meeting_active = False
+                        break
 
                 time.sleep(1)
             except Exception as e:
@@ -234,25 +256,24 @@ class BaseBot:
 
             self.setup_handler()
 
-            logger.info(f"Starting Recording for meeting job {self.job_id}")
-            if not self.recorder.start():
-                return False
-
-            # if not self.wait_and_assign_sink():
-            #     logger.error("Couldn't assign Sink to the chromium")
-            #     return False
-
             logger.info(f"Joining meeting for job {self.job_id}")
             if not self.join_meeting():
                 return False
 
-            # self.check_chrome_sink()
+            # Wait for stream before recording so we don't capture dead silence
+            # and avoid the 9-sec start delay issue.
+            self.wait_for_stream()
+
+            logger.info(f"Starting Recording for meeting job {self.job_id}")
+            if not self.recorder.start():
+                return False
 
             logger.info(f"Meeting Joined for Job {self.job_id} and recording started")
 
             self.detect_meeting_end()
 
             logger.info(f"Meeting ended for Job {self.job_id} and recording ended")
+            self.result = "Completed"
             return True
         except Exception as e:
             logger.error(
@@ -277,6 +298,7 @@ class BaseBot:
     def close(self):
 
         self.is_meeting_active = False
+        self.update_Status(self.result)
 
         if self.browser and self.pw:
             try:

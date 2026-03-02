@@ -102,10 +102,10 @@ class PulseAudio:
 
 class AudioRecorder:
 
-    def __init__(self, job, output_path):
+    def __init__(self, job_id, output_path):
         self.output_path = output_path
         self.ffmpeg_process = None
-        self.pulse_audio = PulseAudio(job.job_id)
+        self.pulse_audio = PulseAudio(job_id)
         self.monitor_device = None
         self.is_recording = False
         self.record_log = None
@@ -114,24 +114,6 @@ class AudioRecorder:
         if not self.pulse_audio.create_sink():
             return False
         return True
-
-    # def wait_for_chromium_audio(self, timeout=60):
-    #     start = time.time()
-
-    #     while time.time() - start < timeout:
-    #         result = subprocess.run(
-    #             ["pactl", "list", "sink-inputs"],
-    #             capture_output=True,
-    #             text=True,
-    #         )
-
-    #         if self.get_sink_name in result.stdout or "Chromium" in result.stdout:
-    #             logger.info("Chromium audio stream detected")
-    #             return True
-
-    #         time.sleep(1)
-
-    #     return False
 
     def start(self):
         try:
@@ -142,11 +124,6 @@ class AudioRecorder:
             if not self.monitor_device:
                 logger.error("Failed to get moniter")
                 return False
-
-            # logger.info("Waiting for Chromium audio stream...")
-            # if not self.wait_for_chromium_audio():
-            #     logger.error("Chromium never produced audio")
-            #     return False
 
             subprocess.run(
                 ["pactl", "set-sink-mute", self.get_sink_name, "0"],
@@ -162,25 +139,22 @@ class AudioRecorder:
 
             cmd = [
                 "ffmpeg",
+                "-y",
+                "-nostdin",
+                "-fflags",
+                "nobuffer",
                 "-flags",
                 "low_delay",
                 "-f",
                 "pulse",
-                "-analyzeduration",
-                "100k",
-                "-probesize",
-                "32k",
                 "-i",
                 self.monitor_device,
-                "-af",
-                "silenceremove=start_periods=1:start_duration=0.2:start_threshold=-40dB"
-                "-ac",
-                "2",
                 "-c:a",
                 "libmp3lame",
                 "-q:a",
                 "5",
-                "-y",
+                "-flush_packets",
+                "1",
                 self.output_path,
             ]
 
