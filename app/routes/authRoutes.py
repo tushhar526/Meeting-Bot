@@ -1,6 +1,12 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.controller.authController import signup, login,logout, checkToken, refreshToken
+from app.controller.authController import (
+    signup,
+    login,
+    logout,
+    checkToken,
+    refreshToken,
+)
 
 
 auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
@@ -15,9 +21,11 @@ def auth_signup():
 def auth_login():
     return login(request)
 
-@auth_bp.route("/logout", method=["POST"])
+
+@auth_bp.route("/logout", methods=["POST"])
 def auth_logout():
     return logout()
+
 
 @auth_bp.route("/me")
 @jwt_required()
@@ -26,7 +34,7 @@ def auth_token():
     return checkToken(user_id)
 
 
-@auth_bp.route("/refreshToken")
+@auth_bp.route("/refreshToken", methods=["POST"])
 @jwt_required(refresh=True)
 def auth_refresh_token():
     user_id = get_jwt_identity()

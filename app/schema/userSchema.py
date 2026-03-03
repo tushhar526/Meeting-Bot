@@ -23,6 +23,7 @@ class UserUpdate(BaseModel):
 class UserResponse(BaseModel):
     user_id: int
     username: str
+    email: EmailStr
 
     class Config:
         from_attributes = True

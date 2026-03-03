@@ -31,6 +31,9 @@ class BaseBot:
         self.is_meeting_active = False
         self.recorder = AudioRecorder(job_id, output_path=self.recording_path)
         self.result = "Failed"
+        
+        # Set initial status when bot is created
+        self.update_Status("Bot Created")
 
     def update_Status(self, status):
         job = JobModel.query.get(self.job_id)
@@ -145,10 +148,8 @@ class BaseBot:
             return False
 
         self.is_meeting_active = True
-        self.job
-        logger.info("Metting started")
-        # self.job.status = "In Meeting"
-        # self.job.save()
+        self.update_Status("Meeting Joined")
+        logger.info("Meeting started and status updated to 'Meeting Joined'")
         return True
 
     def detect_meeting_end(self, timeout_min=120):
@@ -268,17 +269,23 @@ class BaseBot:
             if not self.recorder.start():
                 return False
 
-            logger.info(f"Meeting Joined for Job {self.job_id} and recording started")
+            self.update_Status("In Meeting")
+            logger.info(f"Meeting Joined for Job {self.job_id} and recording started - status updated to 'In Meeting'")
 
             self.detect_meeting_end()
 
             logger.info(f"Meeting ended for Job {self.job_id} and recording ended")
             self.result = "Completed"
+            self.update_Status("Completed")
+            logger.info(f"Status updated to 'Completed' for Job {self.job_id}")
             return True
         except Exception as e:
             logger.error(
                 f" Error occured in starting and joining meeting with Job {self.job_id} due to error = {e}"
             )
+            self.result = "Failed"
+            self.update_Status("Failed")
+            logger.info(f"Status updated to 'Failed' for Job {self.job_id} due to error: {e}")
             return False
         finally:
             self.stop()

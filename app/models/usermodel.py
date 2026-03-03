@@ -5,7 +5,7 @@ from datetime import datetime
 import bcrypt
 
 
-class UserModel(db.Model):
+class userModel(db.Model):
     __tablename__ = "users"
 
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
