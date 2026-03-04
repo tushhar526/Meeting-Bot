@@ -14,10 +14,14 @@ def create_bot(request, user_id):
         return jsonify({"message": "Meeting url is required"}), 401
 
     job = JobModel(job_url=meeting_url, user_id=user_id, platform=platform)
-    job.audio_path = f"app/recordings/job_{job.job_id}_audio.mp3"
-
     db.session.add(job)
-    db.session.commit()
+    db.session.flush()  # Gets the ID without full commit
+    
+    print(f"the job id is like this: {job.job_id}")  # Now this will show the actual ID
+    job.audio_path = f"app/recordings/job_{job.job_id}_audio.mp3"
+    print(f"and the recording path is like this: {job.audio_path}")
+    
+    db.session.commit()  # Single commit saves everything
 
     start_bot.delay(job.job_id, job.audio_path, meeting_url)
 
@@ -94,7 +98,7 @@ def stream_recording(job_id, user_id):
         as_attachment=False,  # Stream instead of download
         mimetype="audio/mpeg",
         conditional=True,  # Support HTTP range requests for seeking
-        max_age=3600  # Cache for 1 hour
+        max_age=3600,  # Cache for 1 hour
     )
 
 
@@ -110,25 +114,41 @@ def list_recordings(user_id):
             .order_by(JobModel.created_at.desc())
             .all()
         )
-        
+
         recordings_list = []
         for recording in recordings:
             # Extract filename from path
-            filename = os.path.basename(recording.audio_path) if recording.audio_path else f"recording_{recording.job_id}.mp3"
-            
-            recordings_list.append({
-                "id": recording.job_id,
-                "name": filename,
-                "created_at": recording.created_at.isoformat() if recording.created_at else None,
-                "created_at_formatted": recording.created_at.strftime('%d-%m-%Y %I:%M %p') if recording.created_at else None,
-                "status": recording.status,
-                "meeting_url": recording.job_url
-            })
-        
-        return jsonify({
-            "recordings": recordings_list,
-            "total_count": len(recordings_list)
-        }), 200
-        
+            filename = (
+                os.path.basename(recording.audio_path)
+                if recording.audio_path
+                else f"recording_{recording.job_id}.mp3"
+            )
+
+            recordings_list.append(
+                {
+                    "id": recording.job_id,
+                    "name": filename,
+                    "created_at": (
+                        recording.created_at.isoformat()
+                        if recording.created_at
+                        else None
+                    ),
+                    "created_at_formatted": (
+                        recording.created_at.strftime("%d-%m-%Y %I:%M %p")
+                        if recording.created_at
+                        else None
+                    ),
+                    "status": recording.status,
+                    "meeting_url": recording.job_url,
+                }
+            )
+
+        return (
+            jsonify(
+                {"recordings": recordings_list, "total_count": len(recordings_list)}
+            ),
+            200,
+        )
+
     except Exception as e:
         return jsonify({"error": f"Failed to list recordings: {str(e)}"}), 500

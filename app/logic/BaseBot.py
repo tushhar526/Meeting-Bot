@@ -31,7 +31,7 @@ class BaseBot:
         self.is_meeting_active = False
         self.recorder = AudioRecorder(job_id, output_path=self.recording_path)
         self.result = "Failed"
-        
+
         # Set initial status when bot is created
         self.update_Status("Bot Created")
 
@@ -43,9 +43,6 @@ class BaseBot:
 
     def setup_driver(self):
         try:
-
-            profile_dir = f"/tmp/chrome_profile_{self.job_id}"
-
             job_env = {
                 **os.environ,
                 "LD_PRELOAD": "libpulse.so.0",
@@ -56,45 +53,33 @@ class BaseBot:
             }
 
             self.pw = sync_playwright().start()
-
-            self.context = self.pw.chromium.launch_persistent_context(
-                user_data_dir=profile_dir,  
+            self.browser = self.pw.chromium.launch(
                 headless=True,
                 env=job_env,
-                permissions=["camera", "microphone"],
                 ignore_default_args=["--mute-audio"],
                 args=[
                     "--autoplay-policy=no-user-gesture-required",
                     "--use-fake-ui-for-media-stream",
                     "--use-fake-device-for-media-stream",
                     "--no-sandbox",
-                    "--disable-blink-features=AutomationControlled",  
+                    "--disable-gpu",
+                    "--disable-dev-shm-usage",
                     "--enable-features=WebRTCPulseAudio",
+                    "--alsa-output-device=pulse",
+                    "--disable-blink-features=AutomationControlled",
                 ],
             )
 
-            # self.browser = self.pw.chromium.launch(
-            #     headless=True,
-            #     env=job_env,
-            #     ignore_default_args=["--mute-audio"],
-            #     args=[
-            #         "--autoplay-policy=no-user-gesture-required",
-            #         "--use-fake-ui-for-media-stream",
-            #         "--use-fake-device-for-media-stream",
-            #         "--no-sandbox",
-            #         "--disable-gpu",
-            #         "--disable-dev-shm-usage",
-            #         "--enable-features=WebRTCPulseAudio",
-            #         "--alsa-output-device=pulse",
-            #     ],
-            # )
-
-            # self.context = self.browser.new_context(permissions=[])
-            # self.page = self.context.new_page()
-
-            self.page = (
-                self.context.pages[0] if self.context.pages else self.context.new_page()
+            self.context = self.browser.new_context(
+                permissions=[],
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 720},
+                locale="en-US",
             )
+            self.page = self.context.new_page()
 
             logger.info("Chrome Browser setup is successful")
             return True
@@ -270,7 +255,12 @@ class BaseBot:
                 return False
 
             self.update_Status("In Meeting")
-            logger.info(f"Meeting Joined for Job {self.job_id} and recording started - status updated to 'In Meeting'")
+            logger.info(
+                f"Meeting Joined for Job {self.job_id} and recording started - status updated to 'In Meeting'"
+            )
+
+            logger.info("Waiting for meeting to settle...")
+            time.sleep(15)
 
             self.detect_meeting_end()
 
@@ -278,14 +268,18 @@ class BaseBot:
             self.result = "Completed"
             self.update_Status("Completed")
             logger.info(f"Status updated to 'Completed' for Job {self.job_id}")
+
             return True
+
         except Exception as e:
             logger.error(
                 f" Error occured in starting and joining meeting with Job {self.job_id} due to error = {e}"
             )
             self.result = "Failed"
             self.update_Status("Failed")
-            logger.info(f"Status updated to 'Failed' for Job {self.job_id} due to error: {e}")
+            logger.info(
+                f"Status updated to 'Failed' for Job {self.job_id} due to error: {e}"
+            )
             return False
         finally:
             self.stop()
