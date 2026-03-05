@@ -12,6 +12,7 @@ class userModel(db.Model):
     username: Mapped[str] = mapped_column(String, nullable=False)
     password: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str] = mapped_column(String, nullable=False)
+    meetings: Mapped[int] = mapped_column(Integer, default=0)
 
     jobs = relationship("JobModel", back_populates="user")
 

@@ -22,8 +22,22 @@ def create_app():
                     "PUT",
                     "DELETE",
                     "OPTIONS",
-                ],  # <--- Specify here
-                "allow_headers": ["Content-Type", "Authorization"],
+                ],
+                "allow_headers": [
+                    "Content-Type", 
+                    "Authorization",
+                    "Range",  # For audio streaming/seeking
+                    "Accept-Ranges",  # For audio streaming
+                ],
+                "expose_headers": [
+                    "Content-Range",  # Expose range headers to frontend
+                    "Accept-Ranges",
+                    "Content-Length",
+                    "X-Audio-Duration",  # Audio metadata headers
+                    "X-Audio-Duration-Formatted",
+                    "X-Audio-File-Size",
+                    "X-Audio-File-Size-MB",
+                ],
             }
         },
         supports_credentials=True,

@@ -7,6 +7,41 @@ from app.extension import celery
 logger = logging.getLogger(__name__)
 
 
+def diagnose_pulse_audio():
+    """Diagnose pulse audio setup for debugging recording issues"""
+    logger.info("=== PULSE AUDIO DIAGNOSTIC ===")
+
+    try:
+        # List all sinks
+        result = subprocess.run(
+            ["pactl", "list", "sinks", "short"], capture_output=True, text=True
+        )
+        logger.info(f"Available sinks:\n{result.stdout}")
+
+        # List all sources (including monitors)
+        result = subprocess.run(
+            ["pactl", "list", "sources", "short"], capture_output=True, text=True
+        )
+        logger.info(f"Available sources:\n{result.stdout}")
+
+        # Get default sink
+        result = subprocess.run(
+            ["pactl", "get-default-sink"], capture_output=True, text=True
+        )
+        logger.info(f"Default sink: {result.stdout.strip()}")
+
+        # Get default source
+        result = subprocess.run(
+            ["pactl", "get-default-source"], capture_output=True, text=True
+        )
+        logger.info(f"Default source: {result.stdout.strip()}")
+
+    except Exception as e:
+        logger.error(f"Diagnostic failed: {e}")
+
+    logger.info("=== END DIAGNOSTIC ===")
+
+
 class PulseAudio:
 
     def __init__(self, job_id):
@@ -119,12 +154,33 @@ class AudioRecorder:
         try:
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
 
+            # Run diagnostics first
+            diagnose_pulse_audio()
+
             self.monitor_device = self.pulse_audio.get_moniter()
 
             if not self.monitor_device:
                 logger.error("Failed to get moniter")
                 return False
 
+            logger.info(f"Using monitor device: {self.monitor_device}")
+
+            # Get current default sink to restore later
+            result = subprocess.run(
+                ["pactl", "get-default-sink"], capture_output=True, text=True
+            )
+            original_sink = result.stdout.strip()
+            logger.info(f"Original default sink: {original_sink}")
+
+            # IMPORTANT: Move audio output to our sink for recording
+            logger.info(f"Setting {self.get_sink_name} as default sink")
+            subprocess.run(
+                ["pactl", "set-default-sink", self.get_sink_name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            # Unmute and set volume for our sink
             subprocess.run(
                 ["pactl", "set-sink-mute", self.get_sink_name, "0"],
                 stdout=subprocess.DEVNULL,
@@ -136,6 +192,19 @@ class AudioRecorder:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+            # Test if monitor device has audio
+            logger.info("Testing monitor device...")
+            result = subprocess.run(
+                ["pactl", "list", "sources", "short"], capture_output=True, text=True
+            )
+            if self.monitor_device in result.stdout:
+                logger.info(f"Monitor device {self.monitor_device} found in sources")
+            else:
+                logger.error(
+                    f"Monitor device {self.monitor_device} NOT found in sources!"
+                )
+                logger.error(f"Available sources:\n{result.stdout}")
 
             cmd = [
                 "ffmpeg",
@@ -152,7 +221,11 @@ class AudioRecorder:
                 "-c:a",
                 "libmp3lame",
                 "-q:a",
-                "5",
+                "2",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
                 "-flush_packets",
                 "1",
                 self.output_path,
@@ -171,6 +244,9 @@ class AudioRecorder:
 
             self.is_recording = True
             logger.info(f" Recording audio at path = {self.output_path}")
+
+            # Store original sink for restoration
+            self.original_sink = original_sink
             return True
 
         except Exception as e:
@@ -198,26 +274,26 @@ class AudioRecorder:
                 logger.info("Terminated the Ffmpeg Successfully")
 
             except subprocess.TimeoutExpired:
-                logger.warning(
-                    "Couldn't terminate the process, killing the Ffmpeg process as a last resort"
-                )
-
+                logger.warning("FFmpeg did not terminate gracefully, forcing kill")
                 self.ffmpeg_process.kill()
                 self.ffmpeg_process.wait()
-                logger.info("Recording process killed successfully")
 
-            finally:
-                time.sleep(2)
-                try:
-                    self.pulse_audio.delete_sink()
-                except Exception as e:
-                    logger.error(f"Couldn't delete sink due to {e}")
-                self.ffmpeg_process = None
+            # IMPORTANT: Restore original audio sink
+            if hasattr(self, "original_sink") and self.original_sink:
+                logger.info(f"Restoring original sink: {self.original_sink}")
+                subprocess.run(
+                    ["pactl", "set-default-sink", self.original_sink],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            # Clean up pulse audio sink
+            self.pulse_audio.delete_sink()
 
             return True
 
         except Exception as e:
-            logger.warning(f"Recording failed to stop due to error = {e}")
+            logger.error(f"Error stopping recording: {e}")
             return False
 
     @property

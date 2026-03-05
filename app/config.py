@@ -15,7 +15,16 @@ class Config:
     # JWT_COOKIE_SAMESITE = os.getenv("JWT_COOKIE_SAMESITE")
     # JWT_COOKIE_CSRF_PROTECT = os.getenv("JWT_COOKIE_CSRF_PROTECT")
 
+    # SQLite configuration optimized for Docker/Celery
     SQLALCHEMY_DATABASE_URI = "sqlite:///mydb.db"
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "connect_args": {
+            "timeout": 20,
+            "check_same_thread": False,
+        }
+    }
 
     CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
     CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"

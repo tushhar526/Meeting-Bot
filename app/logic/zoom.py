@@ -47,39 +47,62 @@ class Zoom:
         except:
             return False
 
-    def detect_end(self, gracePeriod=60):
+    def detect_end(self, grace_period=60) -> bool:
 
         if self.host_ended():
+            logger.info("Host ended the meeting")
             return True
 
-        counter = self.page.locator(".footer-button__number-counter span")
+        count = self._get_participant_count()
 
-        if counter.count() == 0:
-            return True
-
-        try:
-            count = int(counter.first.inner_text().strip())
-        except:
+        if count is None:
+            logger.warning("Could not read participant count — staying to be safe")
             return False
 
         if count > 1:
             return False
 
-        start = time.time()
+        # Bot is alone — start grace period
+        logger.info(
+            f"Bot is alone ({count} participant), starting {grace_period}s grace period..."
+        )
+        start_time = time.time()
 
-        while time.time() - start < gracePeriod:
+        while time.time() - start_time < grace_period:
             try:
-                count = int(counter.first.inner_text().strip())
-            except:
-                time.sleep(2)
-                continue
+                if self.host_ended():
+                    logger.info("Host ended meeting during grace period")
+                    return True
 
-            if count > 1:
-                return False
+                count = self._get_participant_count()
 
-            if self.host_ended():
-                return True
+                if count is None:
+                    time.sleep(2)
+                    continue
+
+                if count > 1:
+                    logger.info(
+                        f"Someone joined during grace period ({count} participants) — staying"
+                    )
+                    return False
+
+            except Exception as e:
+                logger.warning(f"Error during grace period check: {e}")
 
             time.sleep(2)
 
+        logger.info("Grace period expired — leaving")
         return True
+
+    def _get_participant_count(self):
+        """
+        Returns participant count as int, or None if unreadable.
+        Zoom shows count in .footer-button__number-counter span
+        """
+        try:
+            counter = self.page.locator(".footer-button__number-counter span")
+            if counter.count() == 0:
+                return None
+            return int(counter.first.inner_text().strip())
+        except:
+            return None

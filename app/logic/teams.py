@@ -11,9 +11,44 @@ class Teams:
         self.url = url
         self.page = page
 
-    @retry(times=3, delay=5)
+    # @retry(times=3, delay=5)
+    # def join(self):
+    #     logger.info("Handling Teams meeting join ...")
+
+    #     self.page.goto(self.url)
+
+    #     steps = [
+    #         self._step_continue_on_browser,
+    #         self._step_no_av,
+    #         self._step_fill_name,
+    #         self._step_join_now,
+    #     ]
+
+    #     for step in steps:
+    #         try:
+    #             step()
+    #         except Exception as e:
+    #             logger.warning(f"Step {step.__name__} failed or was skipped: {e}")
+    #             # non-fatal — some steps may not appear depending on Teams version
+
+    #     # Final check — if we're still on the pre-join page, something went wrong
+    #     if self.page.locator("button[data-focus-target='gum-continue']").is_visible():
+    #         logger.error("Still on pre-join screen after all steps — join failed")
+    #         self.page.screenshot(
+    #             path=f"/tmp/debug/teams_fail_{self.job_id}.png", full_page=True
+    #         )
+    #         return False
+
+    #     logger.info("Join sequence completed successfully")
+    #     return True
     def join(self):
         logger.info("Handling Teams meeting join ...")
+
+        # Block Teams from redirecting to light experience
+        # self.page.route(
+        #     "**/light-meetings/launch**",
+        #     lambda route: route.fulfill(status=302, headers={"Location": self.url}),
+        # )
 
         self.page.goto(self.url)
 
@@ -29,19 +64,20 @@ class Teams:
                 step()
             except Exception as e:
                 logger.warning(f"Step {step.__name__} failed or was skipped: {e}")
-                # non-fatal — some steps may not appear depending on Teams version
 
-        # Final check — if we're still on the pre-join page, something went wrong
-        if self.page.locator("button[data-focus-target='gum-continue']").is_visible():
-            logger.error("Still on pre-join screen after all steps — join failed")
-            self.page.screenshot(
-                path=f"/tmp/debug/teams_fail_{self.job_id}.png", full_page=True
-            )
+        # Final check — confirm we're past the pre-join screen
+        # Final check — wait to get past pre-join/lobby into the actual meeting
+        try:
+            # roster-button only appears inside the actual meeting
+            self.page.locator("#roster-button").wait_for(
+                state="visible", timeout=120000
+            )  # 2 min for host to admit
+            logger.info("Join sequence completed successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Never made it into the meeting — {e}")
+            self.page.screenshot(path=f"/tmp/debug/teams_fail.png", full_page=True)
             return False
-
-        logger.info("Join sequence completed successfully")
-        return True
-
 
     def _step_continue_on_browser(self):
         """
@@ -49,7 +85,8 @@ class Teams:
         how Teams loads. Skipped silently if not present.
         """
         btn = self.page.locator(
-            "button:has-text('Continue on this browser'), " "button[data-tid='joinOnWeb']"
+            "button:has-text('Continue on this browser'), "
+            "button[data-tid='joinOnWeb']"
         ).first
 
         try:
@@ -59,16 +96,40 @@ class Teams:
         except:
             logger.info("No 'Continue on this browser' button — skipping")
 
-
     def _step_no_av(self):
-        """Click the no audio/video button — always present."""
-        no_av = self.page.locator("button[data-focus-target='gum-continue']")
-        no_av.wait_for(
-            state="visible", timeout=30000
-        )  # longest wait — page needs to load fully
-        no_av.click()
-        logger.info("Clicked no AV")
+        """Turn off camera and mic — works on both pre-join and lobby screens."""
 
+        # Wait for either the AV controls to appear (pre-join or lobby)
+        try:
+            self.page.wait_for_selector(
+                "button[data-tid='video-flyout-open-button'], "
+                "button[data-inp='video-button']",
+                timeout=30000,
+            )
+            logger.info("AV controls detected")
+        except Exception as e:
+            logger.warning(f"AV controls not found — skipping: {e}")
+            return
+
+        # Turn off camera toggle (the blue switch)
+        try:
+            cam_toggle = self.page.get_by_role("switch").first
+            if cam_toggle.is_checked():
+                cam_toggle.click()
+                logger.info("Camera turned off")
+            else:
+                logger.info("Camera already off")
+        except Exception as e:
+            logger.warning(f"Could not turn off camera: {e}")
+
+        # Select "Don't use audio"
+        try:
+            dont_use_audio = self.page.locator('text="Don\'t use audio"')
+            dont_use_audio.wait_for(state="visible", timeout=5000)
+            dont_use_audio.click()
+            logger.info("Selected 'Don't use audio'")
+        except Exception as e:
+            logger.warning(f"Could not select 'Don't use audio': {e}")
 
     def _step_fill_name(self):
         """Fill in the bot name."""
@@ -81,7 +142,6 @@ class Teams:
         name_input.fill("Meeting Bot")
         logger.info("Filled name")
 
-
     def _step_join_now(self):
         """Click the final join button."""
         join_btn = self.page.get_by_role(
@@ -90,7 +150,6 @@ class Teams:
         join_btn.wait_for(state="visible", timeout=10000)
         join_btn.click()
         logger.info("Clicked Join now")  # def join(self):
-
 
     # def join_diagnostic(self):
     #     # """Run this temporarily to see exactly what Teams renders now"""
@@ -159,7 +218,7 @@ class Teams:
 
         try:
             roster_btn = self.page.locator("#roster-button")
-            logger.info(f"Roster button HTML: {roster_btn.inner_html()}")
+            # logger.info(f"Roster button HTML: {roster_btn.inner_html()}")
         except Exception as e:
             logger.warning(f"Could not read roster button: {e}")
 

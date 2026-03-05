@@ -9,10 +9,7 @@ from app.models.jobModel import JobModel
 from app.logic.zoom import Zoom
 from app.logic.meet import Meet
 from app.logic.teams import Teams
-
-
 from playwright.sync_api import sync_playwright
-
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +49,9 @@ class BaseBot:
                 "PULSE_LATENCY_MSEC": "30",
             }
 
+            # Use sync_playwright for better compatibility with Celery workers
             self.pw = sync_playwright().start()
+            
             self.browser = self.pw.chromium.launch(
                 headless=True,
                 env=job_env,
@@ -66,10 +65,11 @@ class BaseBot:
                     "--disable-dev-shm-usage",
                     "--enable-features=WebRTCPulseAudio",
                     "--alsa-output-device=pulse",
+                    "--use-fake-device-for-media-stream",
                     "--disable-blink-features=AutomationControlled",
                 ],
             )
-
+            
             self.context = self.browser.new_context(
                 permissions=[],
                 user_agent=(
@@ -79,11 +79,12 @@ class BaseBot:
                 viewport={"width": 1280, "height": 720},
                 locale="en-US",
             )
+            
             self.page = self.context.new_page()
-
+            
             logger.info("Chrome Browser setup is successful")
             return True
-
+                
         except Exception as e:
             logger.error(f"Error in setting up driver = {e}")
             return False
@@ -100,6 +101,9 @@ class BaseBot:
         )
 
         if not self.handler:
+            self.result = "Failed"
+            self.update_Status("Failed")
+            logger.error("Unsupported meeting platform - status updated to Failed")
             raise ValueError("Unsupported meeting platform")
 
     def wait_for_stream(self, timeout=15):
@@ -125,11 +129,15 @@ class BaseBot:
         logger.warning(
             "Chromium stream not detected within timeout, starting recording anyway."
         )
-        return False
+        # Don't fail here - continue with recording even if stream not detected
+        return True
 
     def join_meeting(self):
 
         if not self.handler.join():
+            self.result = "Failed"
+            self.update_Status("Failed")
+            logger.error("Failed to join meeting - status updated to Failed")
             return False
 
         self.is_meeting_active = True
@@ -174,6 +182,9 @@ class BaseBot:
                 time.sleep(1)
             except Exception as e:
                 logger.error(f" Failed to moniter the meeting due to error = {e}")
+                self.result = "Failed"
+                self.update_Status("Failed")
+                logger.error(f"Meeting monitoring failed - status updated to Failed: {e}")
                 break
 
     # def check_chrome_sink(self):
@@ -233,18 +244,24 @@ class BaseBot:
     def run(self):
         try:
             if not self.recorder.prepare_sink():
+                self.result = "Failed"
+                self.update_Status("Failed")
+                logger.error("Failed to prepare audio sink - status updated to Failed")
                 return False
 
             # time.sleep(2)
 
             if not self.setup_driver():
+                self.result = "Failed"
+                self.update_Status("Failed")
+                logger.error("Failed to setup browser driver - status updated to Failed")
                 return False
 
             self.setup_handler()
 
             logger.info(f"Joining meeting for job {self.job_id}")
             if not self.join_meeting():
-                return False
+                return False  # join_meeting already sets status to Failed
 
             # Wait for stream before recording so we don't capture dead silence
             # and avoid the 9-sec start delay issue.
@@ -252,6 +269,9 @@ class BaseBot:
 
             logger.info(f"Starting Recording for meeting job {self.job_id}")
             if not self.recorder.start():
+                self.result = "Failed"
+                self.update_Status("Failed")
+                logger.error("Failed to start recording - status updated to Failed")
                 return False
 
             self.update_Status("In Meeting")
@@ -297,7 +317,6 @@ class BaseBot:
         pass
 
     def close(self):
-
         self.is_meeting_active = False
         self.update_Status(self.result)
 
@@ -306,9 +325,9 @@ class BaseBot:
                 self.browser.close()
                 self.pw.stop()
                 logger.info(
-                    f" Browser closed as the meeting ended for Job {self.job_id}"
+                    f"Browser closed as the meeting ended for Job {self.job_id}"
                 )
             except Exception as e:
                 logger.error(
-                    f" Error occured in closing the browser for Job {self.job_id}"
+                    f"Error occured in closing the browser for Job {self.job_id}"
                 )
