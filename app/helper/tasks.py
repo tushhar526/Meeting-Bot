@@ -50,21 +50,30 @@ def start_bot(self, job_id, audio_path, job_url):
         active_bots[job_id] = bot
         
         # Run bot recording
-        bot.run()
+        bot_success = bot.run()
         
         # Remove from active bots when done
         if job_id in active_bots:
             del active_bots[job_id]
         
-        # Update job status to "Completed" when done
-        job.status = "Completed"
-        job.ended_at = get_ist_now()
-        
-        # Commit completion status
-        if not safe_commit():
-            raise Exception("Failed to commit completion status after multiple attempts")
-        
-        return {"status": "completed", "job_id": job_id}
+        # Update job status based on bot result
+        if bot_success:
+            job.status = "Completed"
+            job.ended_at = get_ist_now()
+            
+            # Commit completion status
+            if not safe_commit():
+                raise Exception("Failed to commit completion status after multiple attempts")
+            
+            return {"status": "completed", "job_id": job_id}
+        else:
+            # Bot failed - status already set to "Failed" by BaseBot
+            # Just ensure proper cleanup and commit
+            job.ended_at = get_ist_now()
+            if not safe_commit():
+                raise Exception("Failed to commit failure status after multiple attempts")
+            
+            return {"status": "failed", "job_id": job_id, "error": "Bot execution failed"}
         
     except Exception as e:
         logger.error(f"Bot task failed for job {job_id}: {str(e)}")

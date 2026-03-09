@@ -122,7 +122,7 @@ def get_job_status(job_id, user_id):
         response["download_url"] = f"/bot/recording/{job_id}"
         response["stream_url"] = f"/bot/stream/{job_id}"
     elif job.status == "Failed":
-        response["error_message"] = job.error_message or "Recording failed due to unknown error"
+        response["error_message"] = "Recording failed due to unknown error"
         response["failure_reason"] = "The bot encountered an error during the meeting"
 
     return jsonify(response), 200

@@ -51,7 +51,7 @@ class BaseBot:
 
             # Use sync_playwright for better compatibility with Celery workers
             self.pw = sync_playwright().start()
-            
+
             self.browser = self.pw.chromium.launch(
                 headless=True,
                 env=job_env,
@@ -67,24 +67,35 @@ class BaseBot:
                     "--alsa-output-device=pulse",
                     "--use-fake-device-for-media-stream",
                     "--disable-blink-features=AutomationControlled",
+                    "--disable-background-media-suspend",
+                    "--disable-renderer-backgrounding",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
                 ],
             )
-            
+
             self.context = self.browser.new_context(
                 permissions=[],
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                 ),
                 viewport={"width": 1280, "height": 720},
                 locale="en-US",
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
             )
-            
+            # Hide webdriver property to bypass basic bot detection
+            self.context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            )
+
             self.page = self.context.new_page()
-            
+
             logger.info("Chrome Browser setup is successful")
             return True
-                
+
         except Exception as e:
             logger.error(f"Error in setting up driver = {e}")
             return False
@@ -184,7 +195,9 @@ class BaseBot:
                 logger.error(f" Failed to moniter the meeting due to error = {e}")
                 self.result = "Failed"
                 self.update_Status("Failed")
-                logger.error(f"Meeting monitoring failed - status updated to Failed: {e}")
+                logger.error(
+                    f"Meeting monitoring failed - status updated to Failed: {e}"
+                )
                 break
 
     # def check_chrome_sink(self):
@@ -254,7 +267,9 @@ class BaseBot:
             if not self.setup_driver():
                 self.result = "Failed"
                 self.update_Status("Failed")
-                logger.error("Failed to setup browser driver - status updated to Failed")
+                logger.error(
+                    "Failed to setup browser driver - status updated to Failed"
+                )
                 return False
 
             self.setup_handler()
@@ -274,7 +289,7 @@ class BaseBot:
                 logger.error("Failed to start recording - status updated to Failed")
                 return False
 
-            self.update_Status("In Meeting")
+            self.update_Status("Recording Started")
             logger.info(
                 f"Meeting Joined for Job {self.job_id} and recording started - status updated to 'In Meeting'"
             )
@@ -320,10 +335,12 @@ class BaseBot:
         self.is_meeting_active = False
         self.update_Status(self.result)
 
-        if self.browser and self.pw:
+        if self.browser or self.pw:
             try:
-                self.browser.close()
-                self.pw.stop()
+                if self.browser:
+                    self.browser.close()
+                if self.pw:
+                    self.pw.stop()
                 logger.info(
                     f"Browser closed as the meeting ended for Job {self.job_id}"
                 )

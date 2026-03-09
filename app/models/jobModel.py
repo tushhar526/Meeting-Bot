@@ -37,6 +37,7 @@ class JobModel(db.Model):
     ended_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     audio_path: Mapped[str] = mapped_column(String, nullable=True)
     # transcript_path: Mapped[str] = mapped_column(String, nullable=True)
+    error_message: Mapped[str] = mapped_column(String, nullable=True)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     user = relationship("userModel", back_populates="jobs")
