@@ -122,14 +122,58 @@ class Teams:
         except Exception as e:
             logger.warning(f"Could not turn off camera: {e}")
 
-        # Select "Don't use audio"
+        # Turn off microphone toggle (the blue switch for mic)
+        try:
+            # Look for microphone toggle - could be the second switch or a specific mic button
+            mic_toggle = None
+            
+            # Try to find mic-specific toggle first
+            mic_selectors = [
+                "button[data-tid='audio-flyout-open-button']",  # Mic button
+                "button[data-inp='audio-button']",              # Alternative mic button
+                "button[aria-label*='microphone' i]",           # Mic by aria-label
+                "button[aria-label*='mute' i]",                # Mute button
+            ]
+            
+            for selector in mic_selectors:
+                try:
+                    mic_button = self.page.locator(selector).first
+                    if mic_button.is_visible():
+                        mic_toggle = mic_button
+                        break
+                except:
+                    continue
+            
+            # If no specific mic button found, try the second switch (cam is usually first)
+            if not mic_toggle:
+                switches = self.page.get_by_role("switch")
+                if switches.count() > 1:
+                    mic_toggle = switches.nth(1)  # Second switch is usually mic
+                elif switches.count() == 1:
+                    # Only one switch, might be combined or camera only
+                    logger.info("Only one switch found, assuming it's camera only")
+                    return
+            
+            if mic_toggle:
+                if mic_toggle.is_checked():
+                    mic_toggle.click()
+                    logger.info("Microphone turned off")
+                else:
+                    logger.info("Microphone already off")
+            else:
+                logger.warning("Could not find microphone toggle")
+                
+        except Exception as e:
+            logger.warning(f"Could not turn off microphone: {e}")
+
+        # Select "Don't use audio" - DISABLED to allow audio recording
         try:
             dont_use_audio = self.page.locator('text="Don\'t use audio"')
             dont_use_audio.wait_for(state="visible", timeout=5000)
-            dont_use_audio.click()
-            logger.info("Selected 'Don't use audio'")
+            # dont_use_audio.click()  # COMMENTED OUT - We need audio for recording!
+            logger.info("Found 'Don't use audio' option but skipped clicking to enable recording")
         except Exception as e:
-            logger.warning(f"Could not select 'Don't use audio': {e}")
+            logger.warning(f"Could not find 'Don't use audio' option: {e}")
 
     def _step_fill_name(self):
         """Fill in the bot name."""
