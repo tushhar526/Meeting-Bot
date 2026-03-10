@@ -1,7 +1,28 @@
+from datetime import timedelta
+import os
+
+
 class Config:
+    # SQLALCHEMY_DATABASE_URI = os.getenv("SQLALCHEMY_DATABASE_URI")
+    # CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
+    # CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
+    # JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+    # SQLALCHEMY_TRACK_MODIFICATIONS = os.getenv("SQLALCHEMY_TRACK_MODIFICATIONS")
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=2)
+    # JWT_TOKEN_LOCATION = os.getenv("JWT_TOKEN_LOCATION")
+    # JWT_COOKIE_SECURE = os.getenv("JWT_COOKIE_SECURE")
+    # JWT_COOKIE_SAMESITE = os.getenv("JWT_COOKIE_SAMESITE")
+    # JWT_COOKIE_CSRF_PROTECT = os.getenv("JWT_COOKIE_CSRF_PROTECT")
+
+    # SQLite configuration optimized for Docker/Celery
     SQLALCHEMY_DATABASE_URI = "sqlite:///mydb.db"
+
     CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
     CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
-
-    # CELERY_BROKER_URL = "redis://localhost:6379/0"
-    # CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+    JWT_SECRET_KEY = "9EDR5V19E5R1VED5V8VE8RV8EV"
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    JWT_TOKEN_LOCATION = ["cookies"]
+    JWT_COOKIE_SECURE = False
+    JWT_COOKIE_SAMESITE = "Lax"
+    JWT_COOKIE_CSRF_PROTECT = False
