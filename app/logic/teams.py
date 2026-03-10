@@ -97,13 +97,12 @@ class Teams:
             logger.info("No 'Continue on this browser' button — skipping")
 
     def _step_no_av(self):
-        """Turn off camera and mic — works on both pre-join and lobby screens."""
-
-        # Wait for either the AV controls to appear (pre-join or lobby)
+        """Turn off camera and mic on Teams pre-join screen."""
+        
+        # Wait for mic toggle to appear
         try:
             self.page.wait_for_selector(
-                "button[data-tid='video-flyout-open-button'], "
-                "button[data-inp='video-button']",
+                "input[data-tid='toggle-mute']",
                 timeout=30000,
             )
             logger.info("AV controls detected")
@@ -111,70 +110,28 @@ class Teams:
             logger.warning(f"AV controls not found — skipping: {e}")
             return
 
-        # Turn off camera toggle (the blue switch)
+        # Turn off mic (it's a checkbox input, not a button)
         try:
-            cam_toggle = self.page.get_by_role("switch").first
-            if cam_toggle.is_checked():
-                cam_toggle.click()
-                logger.info("Camera turned off")
+            mic_input = self.page.locator("input[data-tid='toggle-mute']")
+            if mic_input.is_checked():
+                mic_input.click()
+                logger.info("Microphone turned off")
             else:
-                logger.info("Camera already off")
-        except Exception as e:
-            logger.warning(f"Could not turn off camera: {e}")
-
-        # Turn off microphone toggle (the blue switch for mic)
-        try:
-            # Look for microphone toggle - could be the second switch or a specific mic button
-            mic_toggle = None
-            
-            # Try to find mic-specific toggle first
-            mic_selectors = [
-                "button[data-tid='audio-flyout-open-button']",  # Mic button
-                "button[data-inp='audio-button']",              # Alternative mic button
-                "button[aria-label*='microphone' i]",           # Mic by aria-label
-                "button[aria-label*='mute' i]",                # Mute button
-            ]
-            
-            for selector in mic_selectors:
-                try:
-                    mic_button = self.page.locator(selector).first
-                    if mic_button.is_visible():
-                        mic_toggle = mic_button
-                        break
-                except:
-                    continue
-            
-            # If no specific mic button found, try the second switch (cam is usually first)
-            if not mic_toggle:
-                switches = self.page.get_by_role("switch")
-                if switches.count() > 1:
-                    mic_toggle = switches.nth(1)  # Second switch is usually mic
-                elif switches.count() == 1:
-                    # Only one switch, might be combined or camera only
-                    logger.info("Only one switch found, assuming it's camera only")
-                    return
-            
-            if mic_toggle:
-                if mic_toggle.is_checked():
-                    mic_toggle.click()
-                    logger.info("Microphone turned off")
-                else:
-                    logger.info("Microphone already off")
-            else:
-                logger.warning("Could not find microphone toggle")
-                
+                logger.info("Microphone already off")
         except Exception as e:
             logger.warning(f"Could not turn off microphone: {e}")
 
-        # Select "Don't use audio" - DISABLED to allow audio recording
+        # Turn off camera (look for the camera toggle the same way)
         try:
-            dont_use_audio = self.page.locator('text="Don\'t use audio"')
-            dont_use_audio.wait_for(state="visible", timeout=5000)
-            # dont_use_audio.click()  # COMMENTED OUT - We need audio for recording!
-            logger.info("Found 'Don't use audio' option but skipped clicking to enable recording")
+            cam_input = self.page.locator("input[data-tid='toggle-video']")
+            if cam_input.count() > 0 and cam_input.is_checked():
+                cam_input.click()
+                logger.info("Camera turned off")
+            else:
+                logger.info("Camera already off or not found")
         except Exception as e:
-            logger.warning(f"Could not find 'Don't use audio' option: {e}")
-
+            logger.warning(f"Could not turn off camera: {e}")  
+            
     def _step_fill_name(self):
         """Fill in the bot name."""
         name_input = self.page.locator(
@@ -194,58 +151,6 @@ class Teams:
         join_btn.wait_for(state="visible", timeout=10000)
         join_btn.click()
         logger.info("Clicked Join now")  # def join(self):
-
-    # def join_diagnostic(self):
-    #     # """Run this temporarily to see exactly what Teams renders now"""
-
-    #     self.page.goto(self.url)
-    #     self.page.wait_for_load_state("networkidle")
-
-    #     # Wait a bit extra for JS to render
-    #     self.page.wait_for_timeout(5000)
-
-    #     # Take screenshot
-    #     self.page.screenshot(path=f"/tmp/debug/teams_diag_.png", full_page=True)
-    #     logger.info(f"Screenshot saved: /tmp/debug/teams_diag.png")
-
-    #     # Log full URL after redirects
-    #     logger.info(f"Final URL: {self.page.url}")
-
-    #     # Check for every selector we care about
-    #     selectors = {
-    #         "Continue on this browser (text)": "button:has-text('Continue on this browser')",
-    #         "joinOnWeb (data-tid)": "button[data-tid='joinOnWeb']",
-    #         "gum-continue (no AV)": "button[data-focus-target='gum-continue']",
-    #         "name input (placeholder)": "input[placeholder='Type your name']",
-    #         "name input (type=text)": "input[type='text']",
-    #         "Join now button": "button:has-text('Join now')",
-    #         "prejoin-join-button": "button[data-tid='prejoin-join-button']",
-    #         "loading screen still visible": "#loading-screen",
-    #         "light experience marker": "[class*='prejoin']",
-    #     }
-
-    #     for label, selector in selectors.items():
-    #         try:
-    #             count = self.page.locator(selector).count()
-    #             visible = (
-    #                 self.page.locator(selector).first.is_visible()
-    #                 if count > 0
-    #                 else False
-    #             )
-    #             logger.info(f"  [{label}] count={count}, visible={visible}")
-    #         except Exception as e:
-    #             logger.info(f"  [{label}] ERROR: {e}")
-
-    #     # Dump all buttons on page
-    #     buttons = self.page.locator("button").all()
-    #     logger.info(f"All buttons on page ({len(buttons)} total):")
-    #     for btn in buttons:
-    #         try:
-    #             logger.info(
-    #                 f"  button | text='{btn.inner_text().strip()}' | aria-label='{btn.get_attribute('aria-label')}' | data-tid='{btn.get_attribute('data-tid')}'"
-    #             )
-    #         except:
-    #             pass
 
     def host_end_screen(self):
         try:

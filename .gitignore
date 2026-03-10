@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 instance/*.db
 .env
+Meeting_bot_(FastAPI,Selenium).md

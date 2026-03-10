@@ -13,6 +13,13 @@ def retry(times=3, delay=5, backoff=1):
 
             for attempt in range(1, times + 1):
                 try:
+                    # Add attempt info to kwargs only if function supports it
+                    import inspect
+                    sig = inspect.signature(func)
+                    if '_attempt' in sig.parameters and '_max_attempts' in sig.parameters:
+                        kwargs['_attempt'] = attempt
+                        kwargs['_max_attempts'] = times
+                    
                     result = func(*args, **kwargs)
 
                     if result is False:

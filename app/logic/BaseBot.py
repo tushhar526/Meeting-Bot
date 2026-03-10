@@ -1,8 +1,9 @@
 import time
 import logging
+import random
+import os
 from app.helper.recording import AudioRecorder
 import subprocess
-import os
 import re
 from app.helper.decorators import retry
 from app.models.jobModel import JobModel
@@ -52,26 +53,36 @@ class BaseBot:
             # Use sync_playwright for better compatibility with Celery workers
             self.pw = sync_playwright().start()
 
+            browser_args = [
+                "--autoplay-policy=no-user-gesture-required",
+                "--use-fake-ui-for-media-stream",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--enable-features=WebRTCPulseAudio",
+                "--alsa-output-device=pulse",
+                "--use-fake-device-for-media-stream",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-background-media-suspend",
+                "--disable-renderer-backgrounding",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-infobars",
+                "--disable-notifications",
+                "--disable-extensions",
+                "--start-maximized",
+                "--use-gl=swiftshader",
+                "--disable-features=WebRtcHideLocalIpsWithMdns",
+                "--enable-features=WebRtcAllowInputVolumeAdjustment",
+            ]
+
             self.browser = self.pw.chromium.launch(
                 headless=True,
                 env=job_env,
                 ignore_default_args=["--mute-audio"],
-                args=[
-                    "--autoplay-policy=no-user-gesture-required",
-                    "--use-fake-ui-for-media-stream",
-                    "--use-fake-device-for-media-stream",
-                    "--no-sandbox",
-                    "--disable-gpu",
-                    "--disable-dev-shm-usage",
-                    "--enable-features=WebRTCPulseAudio",
-                    "--alsa-output-device=pulse",
-                    "--use-fake-device-for-media-stream",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-background-media-suspend",
-                    "--disable-renderer-backgrounding",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows",
-                ],
+                args=browser_args,
             )
 
             self.context = self.browser.new_context(
@@ -200,73 +211,22 @@ class BaseBot:
                 )
                 break
 
-    # def check_chrome_sink(self):
-    #     try:
-    #         chrome_check = subprocess.run(
-    #             ["pgrep", "-f", "chromium"], capture_output=True, text=True, timeout=5
-    #         )
-
-    #         if chrome_check.returncode != 0:
-    #             logger.error("❌ Chrome process NOT running")
-    #             return
-
-    #         pids = chrome_check.stdout.strip().split("\n")
-    #         logger.info(f"✓ Chrome PIDs found: {pids}")
-
-    #         result = subprocess.run(
-    #             ["pactl", "list", "sink-inputs"],
-    #             capture_output=True,
-    #             text=True,
-    #             timeout=10,
-    #         )
-
-    #         all_sink = subprocess.run(
-    #             ["pactl", "list", "sinks", "short"], capture_output=True, text=True
-    #         )
-
-    #         if all_sink.stdout.strip():
-    #             logger.info(f"The sinks present are = {all_sink.stdout}")
-
-    #         logger.info(f"Sink inputs output:\n{result.stdout}")
-
-    #         if not result.stdout.strip():
-    #             logger.error("❌ NO applications connected to PulseAudio at all")
-    #             logger.error("This means Chrome is using ALSA directly, not PulseAudio")
-    #             logger.error("You MUST use route_chrome_to_sink() to move it")
-    #             return
-
-    #         lines = result.stdout.split("\n")
-    #         chrome_found = False
-
-    #         for i, line in enumerate(lines):
-    #             if "application.name" in line and "chromium" in line.lower():
-    #                 chrome_found = True
-    #                 logger.info(f"✓ Chrome found in sink inputs at line {i}")
-    #                 for j in range(max(0, i - 5), min(len(lines), i + 5)):
-    #                     logger.info(f"  {lines[j]}")
-    #                 break
-
-    #         if not chrome_found:
-    #             logger.error("❌ Chrome NOT in PulseAudio sink inputs")
-    #             logger.error("Chrome is using ALSA, not PulseAudio")
-
-    #     except Exception as e:
-    #         logger.error(f"Error checking Chrome sink: {e}")
-
     @retry(times=3, delay=5)
-    def run(self):
+    def run(self, _attempt=None, _max_attempts=None):
         try:
             if not self.recorder.prepare_sink():
-                self.result = "Failed"
-                self.update_Status("Failed")
+                if _attempt == _max_attempts:
+                    self.result = "Failed"
+                    self.update_Status("Failed")
                 logger.error("Failed to prepare audio sink - status updated to Failed")
                 return False
 
             # time.sleep(2)
 
             if not self.setup_driver():
-                self.result = "Failed"
-                self.update_Status("Failed")
+                if _attempt == _max_attempts:
+                    self.result = "Failed"
+                    self.update_Status("Failed")
                 logger.error(
                     "Failed to setup browser driver - status updated to Failed"
                 )
@@ -276,7 +236,9 @@ class BaseBot:
 
             logger.info(f"Joining meeting for job {self.job_id}")
             if not self.join_meeting():
-                return False  # join_meeting already sets status to Failed
+                if _attempt == _max_attempts:
+                    return False  # join_meeting already sets status to Failed
+                return False
 
             # Wait for stream before recording so we don't capture dead silence
             # and avoid the 9-sec start delay issue.
@@ -284,8 +246,9 @@ class BaseBot:
 
             logger.info(f"Starting Recording for meeting job {self.job_id}")
             if not self.recorder.start():
-                self.result = "Failed"
-                self.update_Status("Failed")
+                if _attempt == _max_attempts:
+                    self.result = "Failed"
+                    self.update_Status("Failed")
                 logger.error("Failed to start recording - status updated to Failed")
                 return False
 
@@ -295,26 +258,22 @@ class BaseBot:
             )
 
             logger.info("Waiting for meeting to settle...")
-            time.sleep(15)
+            time.sleep(10)
 
             self.detect_meeting_end()
 
-            logger.info(f"Meeting ended for Job {self.job_id} and recording ended")
             self.result = "Completed"
             self.update_Status("Completed")
-            logger.info(f"Status updated to 'Completed' for Job {self.job_id}")
-
+            logger.info(f"Meeting ended for Job {self.job_id} and recording ended")
             return True
 
         except Exception as e:
-            logger.error(
-                f" Error occured in starting and joining meeting with Job {self.job_id} due to error = {e}"
-            )
-            self.result = "Failed"
-            self.update_Status("Failed")
-            logger.info(
-                f"Status updated to 'Failed' for Job {self.job_id} due to error: {e}"
-            )
+            if _attempt == _max_attempts:
+                logger.error(f"Unexpected error in run method: {e}")
+                self.result = "Failed"
+                self.update_Status("Failed")
+            else:
+                logger.warning(f"Attempt {_attempt}/{_max_attempts}: Unexpected error in run method: {e}")
             return False
         finally:
             self.stop()
