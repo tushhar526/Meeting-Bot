@@ -1,4 +1,5 @@
-from app.models.userModel import userModel
+from app.models.userModel import userModel, UserRole, SubscriptionStatus
+from app.models.planModel import PlanModel
 from flask import jsonify
 from app.extension import jwt
 from app.extension import db
@@ -10,6 +11,7 @@ from flask_jwt_extended import (
     set_refresh_cookies,
 )
 from pydantic import ValidationError
+from datetime import datetime, timedelta
 
 
 def signup(request):
@@ -20,11 +22,22 @@ def signup(request):
             return jsonify({"error": e.errors()}), 400
 
         existing_user = userModel.query.filter_by(username=user_data.username).first()
+        existing_email = userModel.query.filter_by(email=user_data.email).first()
 
         if existing_user:
-            return jsonify({"message": "User already exists"}), 400
+            return jsonify({"message": "Username already exists"}), 400
 
-        new_user = userModel(username=user_data.username, email=user_data.email)
+        if existing_email:
+            return jsonify({"message": "Email already exists"}), 400
+
+        # Create new user with admin role by default
+        new_user = userModel(
+            username=user_data.username,
+            email=user_data.email,
+            organization_name=user_data.organization_name,
+            role=UserRole.ADMIN,
+            subscription_status=SubscriptionStatus.INACTIVE,
+        )
 
         new_user.set_password(raw_password=user_data.password)
 
@@ -36,7 +49,11 @@ def signup(request):
         user_response = UserResponse.model_validate(new_user)
 
         response = jsonify(
-            {"message": "Signup SuccessFull", "user": user_response.model_dump()}
+            {
+                "message": "Signup SuccessFull",
+                "user": user_response.model_dump(),
+                "note": "User created with admin role.",
+            }
         )
 
         set_access_cookies(response, access_token)
@@ -55,7 +72,7 @@ def login(request):
         except ValidationError as e:
             return jsonify({"error": e.errors()}), 400
 
-        user = userModel.query.filter(userModel.username == user_data.username).first()
+        user = userModel.get_by_email_or_username(user_data.username)
 
         if not user or not user.check_password(user_data.password):
             return jsonify({"message": "Invalid credentials"}), 401
@@ -95,7 +112,7 @@ def logout():
 
 
 def checkToken(user_id):
-    user = userModel.query.filter(userModel.user_id == user_id).first()
+    user = userModel.get_active_users().filter(userModel.user_id == user_id).first()
 
     if not user:
         return jsonify({"message": "Invalid Token"}), 401
@@ -108,7 +125,7 @@ def checkToken(user_id):
 
 
 def refreshToken(user_id):
-    user = userModel.query.filter(userModel.user_id == user_id).first()
+    user = userModel.get_active_users().filter(userModel.user_id == user_id).first()
 
     if not user:
         return jsonify({"message": "Invalid Credentials"}), 401
