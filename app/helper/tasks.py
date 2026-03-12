@@ -18,32 +18,12 @@ def start_bot(self, job_id, audio_path, job_url):
     if not job:
         return {"error": "Job not found"}
     
+    bot = None
     try:
         # Update job status to "In Progress"
         job.status = "In Progress"
         job.started_at = get_ist_now()
-        
-        # Helper function for safe commit with retry
-        def safe_commit(max_attempts=3):
-            for attempt in range(max_attempts):
-                try:
-                    db.session.commit()
-                    return True
-                except Exception as commit_error:
-                    logger.warning(f"Commit attempt {attempt + 1} failed: {commit_error}")
-                    if attempt < max_attempts - 1:
-                        try:
-                            db.session.rollback()
-                            time.sleep(0.5)  # Brief pause before retry
-                        except Exception:
-                            pass
-                    else:
-                        raise commit_error
-            return False
-        
-        # Commit initial status
-        if not safe_commit():
-            raise Exception("Failed to commit initial job status after multiple attempts")
+        db.session.commit()
         
         # Create and store bot instance
         bot = BaseBot(job_id, job_url, audio_path)
@@ -52,61 +32,44 @@ def start_bot(self, job_id, audio_path, job_url):
         # Run bot recording
         bot_success = bot.run()
         
-        # Remove from active bots when done
-        if job_id in active_bots:
-            del active_bots[job_id]
-        
-        # Update job status based on bot result
+        # Update job status based on result
         if bot_success:
             job.status = "Completed"
-            job.ended_at = get_ist_now()
-            
-            # Commit completion status
-            if not safe_commit():
-                raise Exception("Failed to commit completion status after multiple attempts")
-            
-            return {"status": "completed", "job_id": job_id}
         else:
-            # Bot failed - status already set to "Failed" by BaseBot
-            # Just ensure proper cleanup and commit
-            job.ended_at = get_ist_now()
-            if not safe_commit():
-                raise Exception("Failed to commit failure status after multiple attempts")
+            job.status = "Failed"
             
-            return {"status": "failed", "job_id": job_id, "error": "Bot execution failed"}
+        job.ended_at = get_ist_now()
+        db.session.commit()
+        
+        return {"status": job.status.lower(), "job_id": job_id}
         
     except Exception as e:
         logger.error(f"Bot task failed for job {job_id}: {str(e)}")
         
-        # Remove from active bots on error
+        # Clean up bot instance
         if job_id in active_bots:
             del active_bots[job_id]
         
-        # For database-related errors, retry task
-        if "disk I/O error" in str(e).lower() or "database" in str(e).lower():
-            if self.request.retries < self.max_retries:
-                logger.info(f"Retrying task {job_id} due to database error (attempt {self.request.retries + 1})")
-                raise self.retry(countdown=60 * (self.request.retries + 1))  # Exponential backoff
-        
-        # Make sure we have a clean session before updating error status
+        # Update job status to "Failed"
         try:
             db.session.rollback()
-        except Exception:
-            pass  # Ignore rollback errors
-        
-        # Update job status to "Failed" if there's an error
-        try:
             job.status = "Failed"
             job.ended_at = get_ist_now()
             job.error_message = str(e)
+            db.session.commit()
+        except Exception as commit_error:
+            logger.error(f"Failed to update job status: {commit_error}")
             
-            # Try to commit error status
-            if not safe_commit(max_attempts=2):  # Fewer attempts for error status
-                logger.error("Failed to commit error status")
-        except Exception as final_error:
-            logger.error(f"Failed to update job status: {final_error}")
+            # Retry the entire task for database errors
+            if self.request.retries < self.max_retries:
+                raise self.retry(countdown=60 * (self.request.retries + 1))
         
         return {"status": "failed", "job_id": job_id, "error": str(e)}
+    
+    finally:
+        # Ensure bot is removed from active bots
+        if job_id in active_bots:
+            del active_bots[job_id]
 
 
 def stop_bot_task(job_id):

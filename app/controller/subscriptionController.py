@@ -6,7 +6,7 @@ from app.schema.userSchema import UserResponse, UserSubscriptionUpdate
 from app.schema.planSchema import PlanResponse, PlanCreate, PlanUpdate
 from app.helper.decorators import require_super_admin, require_auth
 from pydantic import ValidationError
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import json
 
 
@@ -86,7 +86,7 @@ def update_plan(user, plan_id):
         if plan_data.is_active is not None:
             plan.is_active = plan_data.is_active
 
-        plan.updated_at = datetime.utcnow()
+        plan.updated_at = datetime.now(timezone.utc)
         db.session.commit()
 
         return jsonify({

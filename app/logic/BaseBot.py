@@ -7,6 +7,7 @@ import subprocess
 import re
 from app.helper.decorators import retry
 from app.models.jobModel import JobModel
+from app.extension import db
 from app.logic.zoom import Zoom
 from app.logic.meet import Meet
 from app.logic.teams import Teams
@@ -34,10 +35,16 @@ class BaseBot:
         self.update_Status("Bot Created")
 
     def update_Status(self, status):
-        job = JobModel.query.get(self.job_id)
-        if job:
-            job.status = status
-            job.save()
+        """Update job status."""
+        try:
+            job = JobModel.query.get(self.job_id)
+            if job:
+                job.status = status
+                db.session.commit()
+                logger.info(f"Updated job {self.job_id} status to '{status}'")
+        except Exception as e:
+            logger.error(f"Failed to update status to '{status}' for job {self.job_id}: {e}")
+            db.session.rollback()
 
     def setup_driver(self):
         try:
@@ -268,6 +275,12 @@ class BaseBot:
             return True
 
         except Exception as e:
+            # Roll back any broken DB session so the next retry starts clean
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
             if _attempt == _max_attempts:
                 logger.error(f"Unexpected error in run method: {e}")
                 self.result = "Failed"

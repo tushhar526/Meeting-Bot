@@ -1,7 +1,7 @@
 from app.extension import db
 from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import bcrypt
 from enum import Enum
 
@@ -34,8 +34,8 @@ class userModel(db.Model):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)  # Soft delete flag
     deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     meetings: Mapped[int] = mapped_column(Integer, default=0)
 
     jobs = relationship("JobModel", back_populates="user")
@@ -70,28 +70,28 @@ class userModel(db.Model):
         """Assign a plan to user with subscription dates"""
         self.plan_id = plan.plan_id
         self.subscription_status = SubscriptionStatus.ACTIVE
-        self.subscription_start_date = start_date or datetime.utcnow()
+        self.subscription_start_date = start_date or datetime.now(timezone.utc)
         self.subscription_end_date = end_date
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def cancel_subscription(self):
         """Cancel user subscription"""
         self.subscription_status = SubscriptionStatus.CANCELLED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def soft_delete(self):
         """Soft delete user - mark as deleted but keep in database"""
         self.is_deleted = True
-        self.deleted_at = datetime.utcnow()
+        self.deleted_at = datetime.now(timezone.utc)
         self.is_active = False
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def restore(self):
         """Restore soft deleted user"""
         self.is_deleted = False
         self.deleted_at = None
         self.is_active = True
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     @classmethod
     def get_active_users(cls):

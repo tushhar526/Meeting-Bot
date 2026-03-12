@@ -24,12 +24,7 @@ class UserResponse(BaseModel):
     organization_name: Optional[str] = None
     role: UserRole
     plan_id: Optional[int] = None
-    subscription_status: SubscriptionStatus
-    subscription_start_date: Optional[datetime] = None
-    subscription_end_date: Optional[datetime] = None
     is_active: bool
-    is_deleted: bool
-    deleted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     meetings: int
