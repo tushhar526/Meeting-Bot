@@ -105,7 +105,7 @@ def require_super_admin(f):
             if not user.is_super_admin():
                 return jsonify({"message": "Super admin access required"}), 403
                 
-            return f(user, *args, **kwargs)
+            return f(*args, **kwargs)
         except Exception as e:
             return jsonify({"message": "Authentication required"}), 401
     

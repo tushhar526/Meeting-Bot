@@ -13,14 +13,20 @@ logger = logging.getLogger(__name__)
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=60)
 def start_bot(self, job_id, audio_path, job_url):
-    job = JobModel.query.filter_by(job_id=job_id).first()
+    # Use FOR UPDATE to lock the row and prevent duplicate processing
+    job = JobModel.query.filter_by(job_id=job_id).with_for_update().first()
     
     if not job:
         return {"error": "Job not found"}
     
+    # Check if job is already being processed
+    if job.status in ["In Progress", "Completed"]:
+        logger.info(f"Job {job_id} already being processed or completed (status: {job.status})")
+        return {"status": "skipped", "job_id": job_id, "reason": f"Job already {job.status.lower()}"}
+    
     bot = None
     try:
-        # Update job status to "In Progress"
+        # Update job status to "In Progress" atomically
         job.status = "In Progress"
         job.started_at = get_ist_now()
         db.session.commit()

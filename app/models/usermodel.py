@@ -40,6 +40,17 @@ class userModel(db.Model):
 
     jobs = relationship("JobModel", back_populates="user")
     plan = relationship("PlanModel", back_populates="users")
+    logs = relationship("SystemLog", back_populates="user")
+    
+    # Import and define relationship after both models are defined
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    @property
+    def user_integrations(self):
+        """Get user integrations - lazy loading to avoid circular import"""
+        from app.models.userIntegrationModel import UserIntegration
+        return UserIntegration.query.filter_by(user_id=self.user_id, is_active=True).all()
 
     def set_password(self, raw_password):
         hashed = bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt())

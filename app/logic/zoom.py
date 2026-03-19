@@ -2,8 +2,9 @@ import logging
 import re
 from app.helper.decorators import retry
 import time
+from app.helper.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Zoom:
@@ -11,29 +12,33 @@ class Zoom:
     def __init__(self, url, page):
         self.url = url
         self.page = page
+        logger.info(f"Zoom handler initialized for URL: {url}")
 
     @retry(times=3, delay=5)
     def join(self):
         logger.info("Handling Zoom meeting join...")
-
-        self.url = self.url.replace("/j/", "/wc/join/")
-
-        self.page.goto(self.url)
-        self.page.wait_for_load_state("networkidle")
-
+        
         try:
+            self.url = self.url.replace("/j/", "/wc/join/")
+            logger.info(f"Modified Zoom URL: {self.url}")
+
+            self.page.goto(self.url)
+            self.page.wait_for_load_state("networkidle")
+            logger.info("Zoom page loaded successfully")
+
             self.page.locator("input[type = 'text'], input[placeholder='name']").fill(
                 "Meeting Bot"
             )
+            logger.info("Filled name field with 'Meeting Bot'")
 
             join_btn = self.page.get_by_role("button", name=re.compile("Join"))
-
             join_btn.click()
-
+            
+            logger.info("Clicked join button, meeting join initiated")
             return True
 
         except Exception as e:
-            logger.exception(f"Zoom-specific handling error: {e}")
+            logger.error("Zoom-specific handling error", exception=e)
             return False
 
     def host_ended(self):

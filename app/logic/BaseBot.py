@@ -12,8 +12,9 @@ from app.logic.zoom import Zoom
 from app.logic.meet import Meet
 from app.logic.teams import Teams
 from playwright.sync_api import sync_playwright
+from app.helper.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseBot:
@@ -33,6 +34,8 @@ class BaseBot:
 
         # Set initial status when bot is created
         self.update_Status("Bot Created")
+        
+        logger.info(f"BaseBot initialized for job {job_id}", details=f"meeting_url: {meeting_url}, output_path: {output_path}")
 
     def update_Status(self, status):
         """Update job status."""
@@ -42,8 +45,12 @@ class BaseBot:
                 job.status = status
                 db.session.commit()
                 logger.info(f"Updated job {self.job_id} status to '{status}'")
+                
+                # Also log to database with meeting category
+                logger.meeting(f"Job status updated", job_id=self.job_id, 
+                             details=f"status: {status}")
         except Exception as e:
-            logger.error(f"Failed to update status to '{status}' for job {self.job_id}: {e}")
+            logger.error(f"Failed to update status to '{status}' for job {self.job_id}", exception=e)
             db.session.rollback()
 
     def setup_driver(self):
@@ -112,10 +119,12 @@ class BaseBot:
             self.page = self.context.new_page()
 
             logger.info("Chrome Browser setup is successful")
+            logger.meeting("Browser setup completed", job_id=self.job_id, 
+                         details="Chrome browser configured for meeting")
             return True
 
         except Exception as e:
-            logger.error(f"Error in setting up driver = {e}")
+            logger.error(f"Error in setting up driver for job {self.job_id}", exception=e)
             return False
 
     def setup_handler(self):
@@ -132,7 +141,7 @@ class BaseBot:
         if not self.handler:
             self.result = "Failed"
             self.update_Status("Failed")
-            logger.error("Unsupported meeting platform - status updated to Failed")
+            logger.error(f"Unsupported meeting platform for job {self.job_id}: {self.meeting_url}")
             raise ValueError("Unsupported meeting platform")
 
     def wait_for_stream(self, timeout=15):
@@ -148,16 +157,12 @@ class BaseBot:
 
             # Check if chrome/chromium is connected yet.
             if "chrome" in result.stdout.lower() or "chromium" in result.stdout.lower():
-                logger.info(
-                    "Chromium audio stream detected! Starting ffmpeg recording immediately."
-                )
+                logger.info(f"Chromium audio stream detected for job {self.job_id}")
                 return True
 
             time.sleep(0.2)
 
-        logger.warning(
-            "Chromium stream not detected within timeout, starting recording anyway."
-        )
+        logger.warning(f"Chromium stream not detected within timeout for job {self.job_id}, starting recording anyway")
         # Don't fail here - continue with recording even if stream not detected
         return True
 
@@ -166,12 +171,13 @@ class BaseBot:
         if not self.handler.join():
             self.result = "Failed"
             self.update_Status("Failed")
-            logger.error("Failed to join meeting - status updated to Failed")
+            logger.error(f"Failed to join meeting for job {self.job_id}")
             return False
 
         self.is_meeting_active = True
         self.update_Status("Meeting Joined")
-        logger.info("Meeting started and status updated to 'Meeting Joined'")
+        logger.meeting(f"Meeting joined successfully", job_id=self.job_id, 
+                      platform=self._get_platform_name())
         return True
 
     def detect_meeting_end(self, timeout_min=120):
@@ -185,24 +191,14 @@ class BaseBot:
                 current_time = time.time()
 
                 if (current_time - start_time) > timeout_sec:
-                    logger.warning(
-                        "Meeting timeout limit reached ... ... refreshing it"
-                    )
+                    logger.warning(f"Meeting timeout limit reached for job {self.job_id}, refreshing timeout")
                     start_time = current_time
 
                 if (current_time - last_check) > 10:
                     last_check = time.time()
 
                     if self.handler.detect_end():
-                        # logger.info(
-                        #     "The meeting seems to be ended, the bot has entered Grace period"
-                        # )
-                        # time.sleep(60)
-
-                        # if self.handler.detect_end():
-                        logger.info(
-                            "The grace period has ended and Meeting still is at end as detect_end returned true"
-                        )
+                        logger.info(f"Meeting end detected for job {self.job_id}")
                         # self.job.status = "Meeting Ended"
                         # self.job.save()
                         self.is_meeting_active = False
@@ -210,12 +206,9 @@ class BaseBot:
 
                 time.sleep(1)
             except Exception as e:
-                logger.error(f" Failed to moniter the meeting due to error = {e}")
+                logger.error(f"Failed to monitor the meeting for job {self.job_id}", exception=e)
                 self.result = "Failed"
                 self.update_Status("Failed")
-                logger.error(
-                    f"Meeting monitoring failed - status updated to Failed: {e}"
-                )
                 break
 
     @retry(times=3, delay=5)
@@ -225,7 +218,7 @@ class BaseBot:
                 if _attempt == _max_attempts:
                     self.result = "Failed"
                     self.update_Status("Failed")
-                logger.error("Failed to prepare audio sink - status updated to Failed")
+                logger.error(f"Failed to prepare audio sink for job {self.job_id}")
                 return False
 
             # time.sleep(2)
@@ -234,14 +227,13 @@ class BaseBot:
                 if _attempt == _max_attempts:
                     self.result = "Failed"
                     self.update_Status("Failed")
-                logger.error(
-                    "Failed to setup browser driver - status updated to Failed"
-                )
+                logger.error(f"Failed to setup browser driver for job {self.job_id}")
                 return False
 
             self.setup_handler()
 
-            logger.info(f"Joining meeting for job {self.job_id}")
+            logger.meeting(f"Joining meeting", job_id=self.job_id, 
+                          platform=self._get_platform_name())
             if not self.join_meeting():
                 if _attempt == _max_attempts:
                     return False  # join_meeting already sets status to Failed
@@ -251,18 +243,18 @@ class BaseBot:
             # and avoid the 9-sec start delay issue.
             self.wait_for_stream()
 
-            logger.info(f"Starting Recording for meeting job {self.job_id}")
+            logger.meeting(f"Starting recording", job_id=self.job_id, 
+                          platform=self._get_platform_name())
             if not self.recorder.start():
                 if _attempt == _max_attempts:
                     self.result = "Failed"
                     self.update_Status("Failed")
-                logger.error("Failed to start recording - status updated to Failed")
+                logger.error(f"Failed to start recording for job {self.job_id}")
                 return False
 
             self.update_Status("Recording Started")
-            logger.info(
-                f"Meeting Joined for Job {self.job_id} and recording started - status updated to 'In Meeting'"
-            )
+            logger.meeting(f"Recording started successfully", job_id=self.job_id, 
+                          platform=self._get_platform_name(), details="Meeting joined and recording active")
 
             logger.info("Waiting for meeting to settle...")
             time.sleep(10)
@@ -271,7 +263,8 @@ class BaseBot:
 
             self.result = "Completed"
             self.update_Status("Completed")
-            logger.info(f"Meeting ended for Job {self.job_id} and recording ended")
+            logger.meeting(f"Meeting completed successfully", job_id=self.job_id, 
+                          platform=self._get_platform_name(), success=True)
             return True
 
         except Exception as e:
@@ -282,11 +275,11 @@ class BaseBot:
                 pass
 
             if _attempt == _max_attempts:
-                logger.error(f"Unexpected error in run method: {e}")
+                logger.error(f"Unexpected error in run method for job {self.job_id}", exception=e)
                 self.result = "Failed"
                 self.update_Status("Failed")
             else:
-                logger.warning(f"Attempt {_attempt}/{_max_attempts}: Unexpected error in run method: {e}")
+                logger.warning(f"Attempt {_attempt}/{_max_attempts}: Unexpected error in run method for job {self.job_id}", exception=e)
             return False
         finally:
             self.stop()
@@ -300,8 +293,7 @@ class BaseBot:
 
         self.close()
 
-        logger.info(f" Recording stopped for Job {self.job_id}")
-        pass
+        logger.info(f"Recording stopped for Job {self.job_id}")
 
     def close(self):
         self.is_meeting_active = False
@@ -313,10 +305,17 @@ class BaseBot:
                     self.browser.close()
                 if self.pw:
                     self.pw.stop()
-                logger.info(
-                    f"Browser closed as the meeting ended for Job {self.job_id}"
-                )
+                logger.info(f"Browser closed as the meeting ended for Job {self.job_id}")
             except Exception as e:
-                logger.error(
-                    f"Error occured in closing the browser for Job {self.job_id}"
-                )
+                logger.error(f"Error occurred in closing the browser for Job {self.job_id}", exception=e)
+
+    def _get_platform_name(self):
+        """Extract platform name from meeting URL"""
+        if "zoom.us" in self.meeting_url:
+            return "zoom"
+        elif "meet.google.com" in self.meeting_url:
+            return "google_meet"
+        elif "teams.live.com" in self.meeting_url or "teams.microsoft.com" in self.meeting_url:
+            return "teams"
+        else:
+            return "unknown"

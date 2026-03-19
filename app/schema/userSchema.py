@@ -1,4 +1,4 @@
-from pydantic import Field, EmailStr, BaseModel
+from pydantic import Field, EmailStr, BaseModel, ConfigDict
 from typing import Optional, Dict, Any
 from app.helper.validations import PasswordStr
 from datetime import datetime
@@ -9,7 +9,7 @@ class UserCreate(BaseModel):
     username: str = Field(max_length=100)
     password: PasswordStr
     email: EmailStr
-    organization_name: Optional[str] = Field(default=None, max_length=255)
+    organization_name: str = Field(max_length=255)
 
 
 class UserLogin(BaseModel):
@@ -18,6 +18,8 @@ class UserLogin(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     user_id: int
     username: str
     email: EmailStr
@@ -25,13 +27,37 @@ class UserResponse(BaseModel):
     role: UserRole
     plan_id: Optional[int] = None
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
     meetings: int
     plan: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
+    @classmethod
+    def model_validate(cls, obj):
+        """Custom validation to handle plan relationship"""
+        if hasattr(obj, 'plan') and obj.plan:
+            # Convert PlanModel to dictionary
+            plan_dict = {
+                "plan_id": obj.plan.plan_id,
+                "name": obj.plan.name,
+                "plan_type": obj.plan.plan_type,
+                "description": obj.plan.description,
+                "price": float(obj.plan.price),
+                "max_meetings": obj.plan.max_meetings,
+                "max_users": obj.plan.max_users,
+                "features": obj.plan.features,
+                "is_active": obj.plan.is_active,
+            }
+            # Create a copy of the object with plan as dict
+            class UserWithPlanDict:
+                def __init__(self, user_obj, plan_dict):
+                    for attr in dir(user_obj):
+                        if not attr.startswith('_'):
+                            setattr(self, attr, getattr(user_obj, attr))
+                    self.plan = plan_dict
+            
+            obj_with_plan_dict = UserWithPlanDict(obj, plan_dict)
+            return super().model_validate(obj_with_plan_dict)
+        
+        return super().model_validate(obj)
 
 
 class UserUpdate(BaseModel):

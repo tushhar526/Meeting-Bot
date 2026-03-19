@@ -1,12 +1,14 @@
 from flask import Blueprint, request, jsonify
 from app.controller.botController import create_bot, get_job_status, download_recording, stream_recording, list_recordings, get_audio_metadata, update_job_status
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.helper.plan_access import require_plan_access
 
 bot_bp = Blueprint("bot_bp", __name__, url_prefix="/bot")
 
 
 @bot_bp.route("/meeting/start", methods=["POST"])
 @jwt_required()
+@require_plan_access(required_feature='recording')
 def create_job():
     user_id = get_jwt_identity()
     return create_bot(request, user_id)
@@ -14,6 +16,7 @@ def create_job():
 
 @bot_bp.route("/status/<int:job_id>", methods=["GET"])
 @jwt_required()
+@require_plan_access()
 def get_job_status_route(job_id):
     user_id = get_jwt_identity()
     return get_job_status(job_id, user_id)
@@ -21,6 +24,7 @@ def get_job_status_route(job_id):
 
 @bot_bp.route("/recording/<int:job_id>", methods=["GET"])
 @jwt_required()
+@require_plan_access(required_feature='download')
 def download_recording_route(job_id):
     user_id = get_jwt_identity()
     return download_recording(job_id, user_id)
@@ -28,6 +32,7 @@ def download_recording_route(job_id):
 
 @bot_bp.route("/stream/<int:job_id>", methods=["GET"])
 @jwt_required()
+@require_plan_access(required_feature='streaming')
 def stream_recording_route(job_id):
     user_id = get_jwt_identity()
     return stream_recording(job_id, user_id)
@@ -35,6 +40,7 @@ def stream_recording_route(job_id):
 
 @bot_bp.route("/metadata/<int:job_id>", methods=["GET"])
 @jwt_required()
+@require_plan_access(required_feature='metadata')
 def get_audio_metadata_route(job_id):
     """Get audio metadata including duration, file size, etc."""
     user_id = get_jwt_identity()
@@ -86,6 +92,7 @@ def get_audio_metadata_route(job_id):
 
 @bot_bp.route("/recordings", methods=["GET"])
 @jwt_required()
+@require_plan_access()
 def list_recordings_route():
     user_id = get_jwt_identity()
     return list_recordings(user_id)
@@ -93,6 +100,7 @@ def list_recordings_route():
 
 @bot_bp.route("/status/update", methods=["POST", "PUT"])
 @jwt_required()
+@require_plan_access()
 def update_job_status_route():
     user_id = get_jwt_identity()
     return update_job_status(request, user_id)

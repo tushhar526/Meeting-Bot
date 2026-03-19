@@ -41,6 +41,12 @@ class JobModel(db.Model):
     audio_path: Mapped[str] = mapped_column(String, nullable=True)
     # transcript_path: Mapped[str] = mapped_column(String, nullable=True)
     error_message: Mapped[str] = mapped_column(String, nullable=True)
+    
+    # Meeting scheduling fields
+    meeting_id: Mapped[str] = mapped_column(String, nullable=True)
+    meeting_title: Mapped[str] = mapped_column(String, nullable=True)
+    meeting_link: Mapped[str] = mapped_column(String, nullable=True)
+    scheduled_time: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     user = relationship("userModel", back_populates="jobs")
@@ -80,5 +86,11 @@ class JobModel(db.Model):
                 "started_at": self.started_at.isoformat() if self.started_at else None,
                 "started_at_formatted": format_ist_datetime(self.started_at),
                 "status_badge": self._get_status_badge(),
-                "recording_available": bool(self.audio_path and self.status == "Completed")
+                "recording_available": bool(self.audio_path and self.status == "Completed"),
+                # Meeting scheduling fields
+                "meeting_id": self.meeting_id,
+                "meeting_title": self.meeting_title,
+                "meeting_link": self.meeting_link,
+                "scheduled_time": self.scheduled_time.isoformat() if self.scheduled_time else None,
+                "scheduled_time_formatted": format_ist_datetime(self.scheduled_time)
             }

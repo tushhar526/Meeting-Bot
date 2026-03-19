@@ -1,4 +1,4 @@
-from pydantic import Field, AfterValidator
+from pydantic import Field, AfterValidator, EmailStr
 from typing import Annotated
 import re
 
@@ -18,3 +18,5 @@ def validated_Pass(password):
 
 
 PasswordStr = Annotated[str, AfterValidator(validated_Pass)]
+
+EmailType = EmailStr

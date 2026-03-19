@@ -2,17 +2,21 @@ import logging
 from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from app.config import Config
 from app.extension import db, migrate, celery, jwt
+from sqlalchemy import text
 from app.routes.botRoutes import bot_bp
 from app.routes.authRoutes import auth_bp
 from app.routes.userRoutes import user_bp
-from app.routes.webhookRoutes import webhook_bp
+from app.routes.webhookReceieveRoutes import webhook_receiver_bp
 from app.routes.adminRoutes import admin_bp
-from app.routes.multiPlatformCalendarRoutes import multi_calendar_bp
-from app.services.cronService import initialize_cron_service, start_cron_service
+from app.routes.calendarRoutes import multi_calendar_bp
+
+# from app.routes.authCallbackRoutes import auth_callback_bp  # Commented out - using multi-platform instead
+from app.routes.superadminRoutes import superadmin_bp
 
 
 def create_app():
@@ -53,6 +57,7 @@ def create_app():
 
     # load_dotenv() is already called at the top - no need to call again
 
+    print("YOU BET ON THIS ... THE PROJECT GETS UPDATED ON NEW CONTAINER COMMAND")
     app.config.from_object(Config)
     db.init_app(app)
     jwt.init_app(app)
@@ -72,12 +77,29 @@ def create_app():
     app.register_blueprint(bot_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_bp)
-    app.register_blueprint(webhook_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(multi_calendar_bp)
-    
-    # Initialize and start cron service for webhook processing
-    initialize_cron_service(app)
-    start_cron_service()
-    
+    # app.register_blueprint(auth_callback_bp)  # Commented out - using multi-platform instead
+    app.register_blueprint(webhook_receiver_bp)
+    app.register_blueprint(superadmin_bp)
+
+    # Initialize Meeting Bot Cron Scheduler
+    with app.app_context():
+        try:
+            # Enable WAL mode for SQLite to handle concurrent writes
+            if db.engine.url.drivername == "sqlite":
+                db.session.execute(text("PRAGMA journal_mode=WAL"))
+                db.session.commit()
+                print("SQLite WAL mode enabled for concurrent access")
+
+            # Initialize and start SchedulerService
+            from app.services.schedulerService import scheduler_service
+            scheduler_service.initialize()
+            scheduler_service.start()
+            print("SchedulerService initialized and started successfully!")
+
+        except Exception as e:
+            print(f"Warning: Failed to initialize scheduler: {e}")
+            print("Scheduler functionality temporarily disabled")
+
     return app

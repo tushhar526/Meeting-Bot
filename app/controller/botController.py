@@ -8,8 +8,9 @@ import mutagen
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4
 from datetime import timedelta
+from app.helper.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_audio_metadata(file_path):
@@ -55,12 +56,14 @@ def get_audio_metadata(file_path):
 
 def create_bot(request, user_id):
     try:
+        logger.info(f"Bot creation initiated by user {user_id}")
+        
         data = request.json
         meeting_url = data.get("meeting_url")
         platform = data.get("platform")
 
         if not meeting_url:
-            logger.error("Meeting url is required")
+            logger.error(f"Bot creation failed - missing meeting URL for user {user_id}")
             return jsonify({"message": "Meeting url is required"}), 401
 
         # Get user to access meetings count
@@ -69,7 +72,7 @@ def create_bot(request, user_id):
         user = userModel.query.filter_by(user_id=user_id).first()
 
         if not user:
-            logger.error("User not found")
+            logger.error(f"Bot creation failed - user not found: {user_id}")
             return jsonify({"error": "User not found"}), 404
 
         job = JobModel(job_url=meeting_url, user_id=user_id, platform=platform)
@@ -83,10 +86,13 @@ def create_bot(request, user_id):
         job.audio_path = (
             f"app/recordings/{user.username}_meeting_{user.meetings}_audio.mp3"
         )
-        print(f"and the recording path is like this: {job.audio_path}")
+        logger.info(f"Recording path set for job {job.job_id}: {job.audio_path}")
 
         db.session.commit()  # Single commit saves everything
 
+        logger.meeting(f"Bot job created successfully", user_id=user_id, platform=platform, 
+                      job_id=job.job_id, details=f"meeting_url: {meeting_url}, audio_path: {job.audio_path}")
+        
         start_bot.delay(job.job_id, job.audio_path, meeting_url)
 
         return (
@@ -100,14 +106,18 @@ def create_bot(request, user_id):
         )
 
     except Exception as e:
-        logger.error(f"Error in create_bot: {str(e)}")
+        logger.error(f"Error in create_bot for user {user_id}", exception=e, 
+                    details=f"Request data: {request.json if request else 'No request data'}")
         return jsonify({"error": f"Failed to create bot: {str(e)}"}), 500
 
 
 def get_job_status(job_id, user_id):
+    logger.info(f"Job status request for job {job_id} by user {user_id}")
+    
     job = JobModel.query.filter_by(job_id=job_id, user_id=user_id).first()
 
     if not job:
+        logger.warning(f"Job status request failed - job not found: {job_id} for user {user_id}")
         return jsonify({"error": "Job not found"}), 404
 
     response = {
@@ -116,9 +126,18 @@ def get_job_status(job_id, user_id):
         "status": job.status,
         "platform": job.platform,
         "created_at": job.created_at.isoformat() if job.created_at else None,
+        "created_at_formatted": job.created_at.strftime("%d-%m-%Y %I:%M %p") if job.created_at else None,
         "started_at": job.started_at.isoformat() if job.started_at else None,
+        "started_at_formatted": job.started_at.strftime("%d-%m-%Y %I:%M %p") if job.started_at else None,
         "ended_at": job.ended_at.isoformat() if job.ended_at else None,
+        "ended_at_formatted": job.ended_at.strftime("%d-%m-%Y %I:%M %p") if job.ended_at else None,
         "has_recording": False,
+        # Meeting scheduling fields
+        "meeting_id": job.meeting_id,
+        "meeting_title": job.meeting_title,
+        "meeting_link": job.meeting_link,
+        "scheduled_time": job.scheduled_time.isoformat() if job.scheduled_time else None,
+        "scheduled_time_formatted": job.scheduled_time.strftime("%d-%m-%Y %I:%M %p") if job.scheduled_time else None
     }
 
     if job.status == "Completed" and job.audio_path and os.path.exists(job.audio_path):
@@ -128,20 +147,27 @@ def get_job_status(job_id, user_id):
     elif job.status == "Failed":
         response["error_message"] = "Recording failed due to unknown error"
         response["failure_reason"] = "The bot encountered an error during the meeting"
+        logger.warning(f"Job {job_id} failed - returning failure details")
 
+    logger.info(f"Job status retrieved successfully for job {job_id}")
     return jsonify(response), 200
 
 
 def download_recording(job_id, user_id):
+    logger.info(f"Recording download request for job {job_id} by user {user_id}")
+    
     job = JobModel.query.filter_by(job_id=job_id, user_id=user_id).first()
 
     if not job:
+        logger.warning(f"Download failed - job not found: {job_id} for user {user_id}")
         return jsonify({"error": "Job not found"}), 404
 
     if job.status != "Completed":
+        logger.warning(f"Download failed - recording not ready for job {job_id}")
         return jsonify({"error": "Recording not ready"}), 400
 
     if not job.audio_path:
+        logger.warning(f"Download failed - recording file not found for job {job_id}")
         return jsonify({"error": "Recording file not found"}), 404
 
     # Fix path issues - normalize and handle container paths
@@ -158,9 +184,10 @@ def download_recording(job_id, user_id):
     logger.info(f"Downloading audio from: {audio_path}")
 
     if not os.path.exists(audio_path):
-        logger.error(f"Audio file not found at: {audio_path}")
+        logger.error(f"Audio file not found at: {audio_path} for job {job_id}")
         return jsonify({"error": "Recording file not found"}), 404
 
+    logger.info(f"Recording download started for job {job_id}")
     return send_file(
         audio_path,
         as_attachment=True,
@@ -171,15 +198,20 @@ def download_recording(job_id, user_id):
 
 def stream_recording(job_id, user_id):
     """Stream audio file for playback in frontend"""
+    logger.info(f"Recording stream request for job {job_id} by user {user_id}")
+    
     job = JobModel.query.filter_by(job_id=job_id, user_id=user_id).first()
 
     if not job:
+        logger.warning(f"Stream failed - job not found: {job_id} for user {user_id}")
         return jsonify({"error": "Job not found"}), 404
 
     if job.status != "Completed":
+        logger.warning(f"Stream failed - recording not ready for job {job_id}")
         return jsonify({"error": "Recording not ready"}), 400
 
     if not job.audio_path:
+        logger.warning(f"Stream failed - recording file not found for job {job_id}")
         return jsonify({"error": "Recording file not found"}), 404
 
     # Fix path issues - normalize and handle container paths
@@ -196,9 +228,11 @@ def stream_recording(job_id, user_id):
     logger.info(f"Streaming audio from: {audio_path}")
 
     if not os.path.exists(audio_path):
-        logger.error(f"Audio file not found at: {audio_path}")
+        logger.error(f"Audio file not found at: {audio_path} for job {job_id}")
         return jsonify({"error": "Recording file not found"}), 404
 
+    logger.info(f"Recording streaming started for job {job_id}")
+    
     # Get audio metadata
     metadata = get_audio_metadata(audio_path)
 
@@ -237,11 +271,14 @@ def stream_recording(job_id, user_id):
 def update_job_status(request, user_id):
     """Update job status and stop bot if status is Completed or Failed"""
     try:
+        logger.info(f"Job status update request by user {user_id}")
+        
         data = request.json
         job_id = data.get("job_id")
         new_status = data.get("status")
 
         if not job_id or not new_status:
+            logger.warning(f"Status update failed - missing job_id or status for user {user_id}")
             return jsonify({"error": "job_id and status are required"}), 400
 
         if new_status not in ["Completed", "Failed", "In Progress"]:
@@ -257,6 +294,7 @@ def update_job_status(request, user_id):
         # Get job and verify ownership
         job = JobModel.query.filter_by(job_id=job_id, user_id=user_id).first()
         if not job:
+            logger.warning(f"Status update failed - job not found: {job_id} for user {user_id}")
             return jsonify({"error": "Job not found"}), 404
 
         # Update job status
@@ -276,6 +314,9 @@ def update_job_status(request, user_id):
                 logger.warning(f"Could not stop bot task for job {job_id}: {e}")
 
         db.session.commit()
+        
+        logger.meeting(f"Job status updated successfully", user_id=user_id, job_id=job_id, 
+                      details=f"old_status: {job.status}, new_status: {new_status}")
 
         return (
             jsonify(
@@ -289,17 +330,21 @@ def update_job_status(request, user_id):
         )
 
     except Exception as e:
-        logger.error(f"Error updating job status: {str(e)}")
+        logger.error(f"Error updating job status for user {user_id}", exception=e, 
+                    details=f"Request data: {request.json if request else 'No request data'}")
         return jsonify({"error": f"Failed to update job status: {str(e)}"}), 500
 
 
 def list_recordings(user_id):
     """List all recording files for a specific user with id, name, time, and metadata"""
     try:
-        # Get all jobs that have audio files for the specific user
+        logger.info(f"Recordings list request by user {user_id}")
+        
+        # Get only completed jobs that have actual audio files for the specific user
         recordings = (
             db.session.query(JobModel)
             .filter(JobModel.user_id == user_id)
+            .filter(JobModel.status == "Completed")
             .filter(JobModel.audio_path.isnot(None))
             .filter(JobModel.audio_path != "")
             .order_by(JobModel.created_at.desc())
@@ -308,53 +353,43 @@ def list_recordings(user_id):
 
         recordings_list = []
         for recording in recordings:
+            # Get file metadata
+            metadata = get_audio_metadata(recording.audio_path) if recording.audio_path else None
+            
             # Extract filename from path
             filename = (
                 os.path.basename(recording.audio_path)
                 if recording.audio_path
                 else f"recording_{recording.job_id}.mp3"
             )
-
-            # Get audio metadata if recording is completed
-            metadata = None
-            if recording.status == "Completed" and recording.audio_path:
-                # Fix path issues - normalize and handle container paths
-                audio_path = recording.audio_path
-
-                # Remove duplicate /app/ prefix if it exists
-                if audio_path.startswith("/app/app/"):
-                    audio_path = audio_path.replace("/app/app/", "/app/")
-
-                # Handle relative paths - convert to absolute if needed
-                if not audio_path.startswith("/"):
-                    audio_path = os.path.join(os.getcwd(), audio_path)
-
-                # Get metadata if file exists
-                if os.path.exists(audio_path):
-                    metadata = get_audio_metadata(audio_path)
-
-            recordings_list.append(
-                {
-                    "id": recording.job_id,
-                    "name": filename,
-                    "created_at": (
-                        recording.created_at.isoformat()
-                        if recording.created_at
-                        else None
-                    ),
-                    "created_at_formatted": (
-                        recording.created_at.strftime("%d-%m-%Y %I:%M %p")
-                        if recording.created_at
-                        else None
-                    ),
-                    "status": recording.status,
-                    "meeting_url": recording.job_url,
-                    "platform": recording.platform,
-                    "metadata": metadata,  # Include audio metadata
-                    "recording_available": bool(metadata),  # Quick check for frontend
-                }
-            )
-
+            
+            # Fix path issues - normalize and handle container paths
+            audio_path = recording.audio_path
+            
+            # Remove duplicate /app/ prefix if it exists
+            if audio_path.startswith("/app/app/"):
+                audio_path = audio_path.replace("/app/app/", "/app/")
+            
+            recordings_list.append({
+                "id": recording.job_id,
+                "name": filename,
+                "meeting_title": recording.meeting_title,
+                "meeting_link": recording.meeting_link,
+                "meeting_id": recording.meeting_id,
+                "platform": recording.platform,
+                "status": recording.status,
+                "created_at": recording.created_at.isoformat() if recording.created_at else None,
+                "created_at_formatted": recording.created_at.strftime("%d-%m-%Y %I:%M %p") if recording.created_at else None,
+                "scheduled_time": recording.scheduled_time.isoformat() if recording.scheduled_time else None,
+                "scheduled_time_formatted": recording.scheduled_time.strftime("%d-%m-%Y %I:%M %p") if recording.scheduled_time else None,
+                "duration": metadata["duration_formatted"] if metadata else "Unknown",
+                "duration_seconds": metadata["duration_seconds"] if metadata else 0,
+                "file_size": metadata["file_size_mb"] if metadata else 0,
+                "download_url": f"/bot/recording/{recording.job_id}",
+                "stream_url": f"/bot/stream/{recording.job_id}",
+                "status_badge": "success" if recording.status == "Completed" else "warning",
+            })
+        
         return (
             jsonify(
                 {"recordings": recordings_list, "total_count": len(recordings_list)}
@@ -363,4 +398,5 @@ def list_recordings(user_id):
         )
 
     except Exception as e:
+        logger.error(f"Error listing recordings for user {user_id}", exception=e)
         return jsonify({"error": f"Failed to list recordings: {str(e)}"}), 500

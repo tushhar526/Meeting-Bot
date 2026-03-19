@@ -19,6 +19,7 @@ def auth_signup():
 
 @auth_bp.route("/login", methods=["POST"])
 def auth_login():
+    print("The request is like this = ",request)
     return login(request)
 
 

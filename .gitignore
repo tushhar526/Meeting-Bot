@@ -5,4 +5,5 @@ __pycache__/
 *.pyc
 instance/*.db
 .env
+migrations/
 Meeting_bot_(FastAPI,Selenium).md
