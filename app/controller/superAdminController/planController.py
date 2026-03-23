@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from typing import Optional
 
 
-def create_plan():
+def create_plan(request, user=None):
     """Create a new plan"""
     try:
         data = request.json
@@ -34,7 +34,6 @@ def create_plan():
             price=float(data['price']),
             max_meetings=data.get('max_meetings'),
             max_users=data.get('max_users'),
-            features=data.get('features', ''),
             is_active=data.get('is_active', True)
         )
         
@@ -51,7 +50,7 @@ def create_plan():
         return jsonify({"error": f"Failed to create plan: {str(e)}"}), 500
 
 
-def update_plan(plan_id):
+def update_plan(plan_id, request, user=None):
     """Update an existing plan"""
     try:
         plan = PlanModel.query.get(plan_id)
@@ -85,9 +84,6 @@ def update_plan(plan_id):
         if 'max_users' in data:
             plan.max_users = data['max_users']
         
-        if 'features' in data:
-            plan.features = data['features']
-        
         if 'is_active' in data:
             plan.is_active = data['is_active']
         
@@ -104,7 +100,7 @@ def update_plan(plan_id):
         return jsonify({"error": f"Failed to update plan: {str(e)}"}), 500
 
 
-def delete_plan(plan_id):
+def delete_plan(plan_id, user=None):
     """Delete a plan (soft delete by setting is_active=False)"""
     try:
         plan = PlanModel.query.get(plan_id)
@@ -132,7 +128,7 @@ def delete_plan(plan_id):
         return jsonify({"error": f"Failed to delete plan: {str(e)}"}), 500
 
 
-def get_all_plans():
+def get_all_plans(user=None):
     """Get all plans"""
     try:
         plans = PlanModel.query.all()
@@ -145,7 +141,7 @@ def get_all_plans():
         return jsonify({"error": f"Failed to get plans: {str(e)}"}), 500
 
 
-def get_plan(plan_id):
+def get_plan(plan_id, user=None):
     """Get a specific plan"""
     try:
         plan = PlanModel.query.get(plan_id)

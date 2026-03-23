@@ -1,7 +1,7 @@
 from app.models.jobModel import JobModel, get_ist_now
 from flask import jsonify, send_file
 from app.extension import db
-from app.helper.tasks import start_bot, stop_bot_task
+from app.task.bot_tasks import start_bot, stop_bot_task
 import os
 import logging
 import mutagen

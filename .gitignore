@@ -1,9 +1,9 @@
 app.log
 app/recordings/
-readmeDocs/
-__pycache__/
+/__pycache__/
 *.pyc
 instance/*.db
 .env
 migrations/
+readme/
 Meeting_bot_(FastAPI,Selenium).md

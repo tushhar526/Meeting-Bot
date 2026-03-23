@@ -19,6 +19,57 @@ def start_bot(self, job_id, audio_path, job_url):
     if not job:
         return {"error": "Job not found"}
     
+    # PLAN ACCESS CHECK - Centralized protection for both manual and automatic creation
+    try:
+        from app.models.userModel import userModel
+        from app.helper.plan_access import PlanConfig
+        
+        user = userModel.query.filter_by(user_id=job.user_id).first()
+        if not user:
+            return {"error": "User not found", "access_denied": True}
+        
+        # Super admins bypass all restrictions
+        if not user.is_super_admin():
+            # Check active subscription
+            if not user.has_active_subscription():
+                logger.warning(f"Bot access denied - no active subscription: user {job.user_id}, job {job_id}")
+                job.status = "Failed"
+                job.error_message = "Access denied: No active subscription"
+                job.ended_at = get_ist_now()
+                db.session.commit()
+                return {"status": "failed", "job_id": job_id, "error": "Access denied: No active subscription", "access_denied": True}
+            
+            # Check plan access for recording feature
+            if user.plan and not PlanConfig.has_feature_access(user.plan.plan_type, 'recording'):
+                logger.warning(f"Bot access denied - recording not in plan: user {job.user_id}, plan {user.plan.plan_type.value}, job {job_id}")
+                job.status = "Failed"
+                job.error_message = "Access denied: Recording not available in your plan"
+                job.ended_at = get_ist_now()
+                db.session.commit()
+                return {"status": "failed", "job_id": job_id, "error": "Access denied: Recording not available in your plan", "access_denied": True}
+            
+            # Check meeting limits
+            plan_limits = PlanConfig.get_plan_limits(user.plan.plan_type)
+            max_meetings = plan_limits['max_meetings']
+            if not plan_limits['unlimited_meetings'] and max_meetings is not None:
+                if user.meetings >= max_meetings:
+                    logger.warning(f"Bot access denied - meeting limit exceeded: user {job.user_id}, limit {max_meetings}, job {job_id}")
+                    job.status = "Failed"
+                    job.error_message = f"Access denied: Meeting limit ({max_meetings}) exceeded"
+                    job.ended_at = get_ist_now()
+                    db.session.commit()
+                    return {"status": "failed", "job_id": job_id, "error": f"Access denied: Meeting limit ({max_meetings}) exceeded", "access_denied": True}
+        
+        logger.info(f"Bot access granted: user {job.user_id}, job {job_id}")
+        
+    except Exception as e:
+        logger.error(f"Plan access check failed for job {job_id}, user {job.user_id}: {e}")
+        job.status = "Failed"
+        job.error_message = "Access check failed"
+        job.ended_at = get_ist_now()
+        db.session.commit()
+        return {"status": "failed", "job_id": job_id, "error": "Access check failed", "access_denied": True}
+    
     # Check if job is already being processed
     if job.status in ["In Progress", "Completed"]:
         logger.info(f"Job {job_id} already being processed or completed (status: {job.status})")

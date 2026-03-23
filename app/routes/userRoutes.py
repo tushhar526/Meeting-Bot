@@ -1,10 +1,9 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.controller.userController import (
+from app.controller import (
     get_user_profile,
     update_user_profile,
     change_password,
-    delete_user_account,
     get_user_analytics,
     get_meeting_trends,
     get_all_plans,
@@ -54,7 +53,7 @@ def get_analytics():
 @jwt_required()
 def get_trends():
     user_id = get_jwt_identity()
-    days = request.args.get('days', 30, type=int)
+    days = request.args.get("days", 30, type=int)
     return get_meeting_trends(user_id, days)
 
 

@@ -43,7 +43,6 @@ class UserResponse(BaseModel):
                 "price": float(obj.plan.price),
                 "max_meetings": obj.plan.max_meetings,
                 "max_users": obj.plan.max_users,
-                "features": obj.plan.features,
                 "is_active": obj.plan.is_active,
             }
             # Create a copy of the object with plan as dict

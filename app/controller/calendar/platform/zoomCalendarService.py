@@ -16,11 +16,10 @@ ZOOM_AUTH_URL = "https://zoom.us/oauth/authorize"
 ZOOM_TOKEN_URL = "https://zoom.us/oauth/token"
 ZOOM_API = "https://api.zoom.us/v2"
 ZOOM_SCOPES = (
-    "user:read:admin "
-    "meeting:read:list_meetings:admin "
-    "meeting:read:meeting:admin "
-    "meeting:write:meeting:admin"
-)
+    "user:read:user "
+    "meeting:read:meeting "
+    "meeting:read:list_meetings"
+)   
 
 
 class ZoomCalendarService(BaseCalendarService):

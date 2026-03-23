@@ -71,11 +71,23 @@ class CalendarController:
         code: str,
         state: str,
         redirect_uri: str = None,
+        app_user_id: int = None,  # your app's integer user ID, decoded from JWT state by the route
     ) -> Dict[str, Any]:
         """
         Exchange code for tokens, fetch user info, create webhook, and do initial sync.
-        Initial sync now delegates to SchedulerService to avoid circular imports.
+
+        FIX: Enforces one-email-one-user BEFORE touching any DB rows or webhooks.
+        If the calendar email is already connected to a different app user, raises
+        ValueError immediately with a clear message — zero side-effects.
+
+        NOTE: The calling route should decode app_user_id from the JWT `state`
+        and pass it here. Example:
+            payload = jwt.decode(state, secret, algorithms=["HS256"])
+            app_user_id = int(payload["user_id"])
+            result = controller.handle_callback(..., app_user_id=app_user_id)
         """
+        from app.models.userIntegrationModel import UserIntegration
+
         if not code:
             raise ValueError("Authorization code not provided")
 
@@ -85,6 +97,24 @@ class CalendarController:
 
         tokens = service.exchange_code_for_tokens(code)
         user_info = service.get_user_info(tokens["access_token"])
+        calendar_email = user_info.get("email")
+
+        # ── One-email-one-user guard ──────────────────────────────────────────
+        # Block the connection if this calendar email is already live on another
+        # app account. Same user reconnecting is always fine (token refresh case).
+        if app_user_id and calendar_email:
+            allowed, reason = UserIntegration.claim_or_reject(
+                user_id=app_user_id,
+                platform=platform,
+                account_email=calendar_email,
+            )
+            if not allowed:
+                logger.warning(
+                    f"[{platform}] Blocked duplicate connection attempt: "
+                    f"'{calendar_email}' already owned by a different user"
+                )
+                raise ValueError(reason)
+        # ─────────────────────────────────────────────────────────────────────
 
         result = {
             "platform": platform,
@@ -97,12 +127,13 @@ class CalendarController:
                 else None
             ),
             "token_type": tokens.get("token_type", "Bearer"),
-            "user_email": user_info.get("email"),
+            "user_email": calendar_email,
             "user_name": user_info.get("name"),
-            "user_id": user_info.get("id"),
+            "user_id": user_info.get("id"),     # platform's own user ID string (e.g. Google sub)
+            "app_user_id": app_user_id,         # YOUR app's integer user ID
         }
 
-        # --- Webhook setup ---
+        # --- Webhook setup (pass app_user_id so cleanup targets the right rows) ---
         result.update(self._setup_webhook(platform, service, result))
 
         # --- Initial sync (via SchedulerService to avoid circular imports) ---
@@ -111,19 +142,33 @@ class CalendarController:
         return result
 
     def _setup_webhook(self, platform: str, service, result: Dict) -> Dict:
-        """Clean up all old webhooks then create a fresh one."""
+        """
+        Clean up all old webhooks for this app user + platform, then create a fresh one.
+
+        FIX: Was querying by result["user_id"] which is the PLATFORM's user ID string
+        (e.g. Google's "118302..."), not your app's integer user_id. WebhookModel.user_id
+        stores the app integer, so the old query never matched anything — stale webhook
+        rows from previous connections were never cleaned up, causing duplicate channels
+        to pile up and fire bots for every connected account.
+
+        Now uses result["app_user_id"] (your app's integer) for the DB lookup.
+        """
         from app.models.webhookModel import WebhookModel
         from app.extension import db
 
+        # Use the app's integer user ID, not the platform's string user ID
+        app_user_id = result.get("app_user_id")
+
         try:
-            # Clean up ALL existing webhook rows for this user+platform
-            # Using .all() not .first() — multiple stale rows may exist
             existing_webhooks = WebhookModel.query.filter_by(
-                user_id=result.get("user_id"), platform=platform
+                user_id=app_user_id, platform=platform
             ).all()
 
             if existing_webhooks:
-                logger.info(f"[{platform}] Found {len(existing_webhooks)} existing webhook(s) — cleaning up before creating new one")
+                logger.info(
+                    f"[{platform}] Found {len(existing_webhooks)} existing webhook(s) "
+                    f"for user {app_user_id} — stopping and removing before creating new one"
+                )
                 for w in existing_webhooks:
                     try:
                         if w.channel_id:
@@ -132,7 +177,9 @@ class CalendarController:
                             )
                             logger.info(f"[{platform}] Stopped old channel: {w.channel_id}")
                     except Exception as e:
-                        logger.warning(f"[{platform}] Could not stop old channel {w.channel_id}: {e}")
+                        logger.warning(
+                            f"[{platform}] Could not stop old channel {w.channel_id}: {e}"
+                        )
                     db.session.delete(w)
                 db.session.commit()
 
@@ -147,11 +194,16 @@ class CalendarController:
                 platform, webhook_result
             )
             if not parsed["success"]:
-                logger.error(f"[{platform}] Failed to parse webhook response: {parsed['error']}")
+                logger.error(
+                    f"[{platform}] Failed to parse webhook response: {parsed['error']}"
+                )
                 return {"webhook_created": False, "webhook_error": parsed["error"]}
 
             identifiers = parsed["platform_identifiers"]
-            logger.info(f"[{platform}] Created fresh webhook: {identifiers.get('channel_id')}")
+            logger.info(
+                f"[{platform}] Created fresh webhook for user {app_user_id}: "
+                f"{identifiers.get('channel_id')}"
+            )
             return {
                 "webhook_created": True,
                 "webhook_url": webhook_url,
@@ -168,11 +220,14 @@ class CalendarController:
                 "webhook_error": str(e),
                 "fallback_polling": True,
             }
-            
+
     def _initial_sync(self, platform: str, service, result: Dict):
         """Fetch upcoming meetings and schedule bots. Uses SchedulerService."""
         try:
             from app.services.schedulerService import scheduler_service
+
+            # Prefer app_user_id (integer) — fall back to platform user_id for compat
+            user_id = result.get("app_user_id") or result.get("user_id")
 
             events = service.get_upcoming_meetings(
                 access_token=result["access_token"],
@@ -181,7 +236,7 @@ class CalendarController:
             synced = 0
             for event in events:
                 if event.get("meeting_link"):
-                    scheduler_service.store_and_schedule(event, result.get("user_id"))
+                    scheduler_service.store_and_schedule(event, user_id)
                     synced += 1
 
             logger.info(f"[{platform}] Initial sync: {synced} meetings scheduled")
@@ -222,7 +277,6 @@ class CalendarController:
     def refresh_token(self, platform: str, refresh_token: str, **client_credentials) -> Dict[str, Any]:
         """Kept for backward compatibility with TokenService calls."""
         from app.services.tokenService import TokenService
-        # Delegate to the single source of truth
         return TokenService._refresh_token(platform, refresh_token)
 
     # ------------------------------------------------------------------

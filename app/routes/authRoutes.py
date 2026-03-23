@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.controller.authController import (
+from app.controller import (
     signup,
     login,
     logout,
@@ -19,7 +19,6 @@ def auth_signup():
 
 @auth_bp.route("/login", methods=["POST"])
 def auth_login():
-    print("The request is like this = ",request)
     return login(request)
 
 

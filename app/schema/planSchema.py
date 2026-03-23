@@ -34,24 +34,12 @@ class PlanResponse(BaseModel):
     price: float
     max_meetings: Optional[int] = None
     max_users: Optional[int] = None
-    features: Optional[str] = None  # JSON string
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
-
-    @property
-    def features_list(self) -> List[str]:
-        """Convert JSON string to list"""
-        if self.features:
-            try:
-                import json
-                return json.loads(self.features)
-            except:
-                return []
-        return []
 
 
 class PlanWithUsers(PlanResponse):

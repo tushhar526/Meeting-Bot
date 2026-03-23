@@ -22,15 +22,15 @@ class PlanModel(db.Model):
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0.00)
     max_meetings: Mapped[int] = mapped_column(Integer, nullable=True)  # None for unlimited
     max_users: Mapped[int] = mapped_column(Integer, nullable=True)  # None for unlimited
-    features: Mapped[str] = mapped_column(Text, nullable=True)  # JSON string of features
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_visible_to_users: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     users = relationship("userModel", back_populates="plan")
 
     def to_dict(self):
-        return {
+        result = {
             "plan_id": self.plan_id,
             "name": self.name,
             "plan_type": self.plan_type,
@@ -38,8 +38,15 @@ class PlanModel(db.Model):
             "price": float(self.price),
             "max_meetings": self.max_meetings,
             "max_users": self.max_users,
-            "features": self.features,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+        
+        # Add is_visible_to_users if the column exists
+        if hasattr(self, 'is_visible_to_users'):
+            result["is_visible_to_users"] = self.is_visible_to_users
+        else:
+            result["is_visible_to_users"] = True  # Default value for backward compatibility
+            
+        return result

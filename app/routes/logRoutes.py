@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import logging
 from datetime import datetime, timezone, timedelta
-from app.controller.logController import LogController, require_super_admin
+from app.helper.decorators import require_super_admin
 from app.models.logModel import SystemLog, LogLevel, LogCategory
 from app.extension import db
 from sqlalchemy import desc, and_, or_, func
@@ -90,7 +90,7 @@ def get_system_logs():
         logger.info(f"DEBUG: Filters applied - level: {level}, category: {category}")
         
         # Debug: Show actual query
-        logger.info(f"DEBUG: SQL Query: {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}")
+        logger.info(f"DEBUG: SQL Query: {str(query.statement.compile(compile_kwargs={'literal_binds': True}))}")
         
         # Order by most recent
         query = query.order_by(desc(SystemLog.created_at))

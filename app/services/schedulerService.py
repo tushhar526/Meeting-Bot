@@ -3,6 +3,7 @@ import pytz
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
+from flask import current_app
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -28,9 +29,8 @@ class SchedulerService:
     # ------------------------------------------------------------------
 
     def initialize(self):
-        from flask import current_app
 
-        self.app = current_app._get_current_object()  # ← add this line
+        self.app = current_app._get_current_object()
         self.scheduler = BackgroundScheduler(
             jobstores={"default": MemoryJobStore()},
             executors={"default": ThreadPoolExecutor(20)},
@@ -103,7 +103,7 @@ class SchedulerService:
     # ------------------------------------------------------------------
 
     def schedule_bot_job(
-        self, event: Dict[str, Any], user_id: int, buffer_minutes: int = 10
+        self, event: Dict[str, Any], user_id: int, buffer_minutes: int = 2
     ) -> bool:
         """Schedule the bot to join a meeting. For Microsoft, joins exactly on time."""
         try:
@@ -165,7 +165,6 @@ class SchedulerService:
     def _trigger_bot(self, event: Dict[str, Any], user_id: int):
         """Called by APScheduler to actually launch the bot."""
         try:
-            from flask import current_app
 
             with self.app.app_context():
                 meeting_link = event.get("meeting_link")
@@ -207,7 +206,6 @@ class SchedulerService:
                 f"[Scheduler] _trigger_bot error for {event.get('title')}: {e}"
             )
             try:
-                from flask import current_app
 
                 with self.app.app_context():
                     job = JobModel.query.filter_by(
@@ -230,9 +228,9 @@ class SchedulerService:
     ):
         """Launch bot task. Reuses existing JobModel row — does NOT create a new one."""
         try:
-            from flask import current_app
+
             from app.models.userModel import userModel
-            from app.helper.tasks import start_bot
+            from app.task.bot_tasks import start_bot
 
             with self.app.app_context():
                 user = userModel.query.filter_by(user_id=user_id).first()
@@ -268,7 +266,6 @@ class SchedulerService:
     def schedule_all_pending_jobs(self):
         """On startup, re-schedule any jobs that are still pending in the DB."""
         try:
-            from flask import current_app
 
             with self.app.app_context():
                 pending = JobModel.query.filter_by(status="pending").all()
@@ -301,14 +298,30 @@ class SchedulerService:
         logger.info("[Scheduler] Fallback polling every 30 minutes")
 
     def _fallback_polling(self):
-        """Poll calendar APIs for users without active webhooks."""
+        """
+        Poll calendar APIs for users without active webhooks.
+
+        FIX: Previously, all meetings from all integrations were processed in a
+        single flat loop. This caused the first platform encountered (e.g. Google)
+        to flood the scheduler with bot jobs, starving all other platforms
+        (e.g. Microsoft, Zoom) of scheduling slots.
+
+        The fix collects upcoming meetings from EVERY integration first, then
+        interleaves them round-robin by platform before scheduling. This ensures
+        each platform gets an equal share of bot slots regardless of meeting count.
+        """
         try:
-            from flask import current_app
+
             from app.controller.calendar.calendarController import CalendarController
             from app.services.tokenService import TokenService
 
             with self.app.app_context():
                 integrations = UserIntegration.query.filter_by(is_active=True).all()
+
+                # ── Step 1: Collect meetings grouped by platform ──────────────
+                # Key: platform name  →  Value: list of (meeting, user_id) tuples
+                meetings_by_platform: Dict[str, list] = {}
+
                 for integration in integrations:
                     try:
                         calendar_controller = CalendarController()
@@ -321,12 +334,61 @@ class SchedulerService:
                             access_token=access_token,
                             refresh_token=integration.refresh_token,
                         )
-                        for meeting in meetings:
-                            if meeting.get("meeting_link"):
-                                self.store_and_schedule(meeting, integration.user_id)
+
+                        # Only keep meetings that have a link and are not already
+                        # scheduled/running to avoid redundant store_and_schedule calls.
+
+                        already_scheduled_ids = set()
+
+                        for job in JobModel.query.filter(
+                            JobModel.user_id == integration.user_id
+                        ).all():
+
+                            if job.status in (
+                                "scheduled",
+                                "running",
+                                "In progress",
+                                "Bot Created",
+                                "Meeting Started",
+                                "Recording Started",
+                                "Completed",
+                            ):
+                                already_scheduled_ids.add(job.meeting_id)
+
+                            elif job.status == "Failed":
+                                if job.scheduled_time:
+                                    scheduled_utc = self._convert_ist_to_utc(
+                                        job.scheduled_time.isoformat()
+                                    )
+
+                                    if scheduled_utc:
+                                        now = datetime.now(timezone.utc)
+                                        mins_since_start = (
+                                            now - scheduled_utc
+                                        ).total_seconds() / 60
+
+                                        if mins_since_start > 30:
+                                            already_scheduled_ids.add(job.meeting_id)
+                                    else:
+                                        already_scheduled_ids.add(job.meeting_id)
+
+                        new_meetings = [
+                            m
+                            for m in meetings
+                            if m.get("meeting_link")
+                            and m.get("id") not in already_scheduled_ids
+                        ]
+
+                        platform = integration.platform
+                        if platform not in meetings_by_platform:
+                            meetings_by_platform[platform] = []
+                        meetings_by_platform[platform].extend(
+                            (m, integration.user_id) for m in new_meetings
+                        )
 
                         logger.info(
-                            f"[Scheduler] Polled {len(meetings)} meetings for {integration.platform}"
+                            f"[Scheduler] Fetched {len(new_meetings)} new meetings "
+                            f"for {platform} (user {integration.user_id})"
                         )
 
                     except Exception as e:
@@ -334,7 +396,29 @@ class SchedulerService:
                             f"[Scheduler] Polling error for {integration.platform}: {e}"
                         )
 
-                logger.info("[Scheduler] Fallback polling complete")
+                # ── Step 2: Interleave round-robin across platforms ────────────
+                # Build an ordered queue that alternates platforms so no single
+                # platform dominates the scheduling window.
+                platform_queues = {
+                    p: list(items) for p, items in meetings_by_platform.items()
+                }
+                interleaved = []
+                while any(platform_queues.values()):
+                    for platform in list(platform_queues.keys()):
+                        if platform_queues[platform]:
+                            interleaved.append(platform_queues[platform].pop(0))
+
+                # ── Step 3: Schedule in the interleaved order ─────────────────
+                scheduled_count = 0
+                for meeting, user_id in interleaved:
+                    if self.store_and_schedule(meeting, user_id):
+                        scheduled_count += 1
+
+                logger.info(
+                    f"[Scheduler] Fallback polling complete — "
+                    f"scheduled {scheduled_count} new meetings across "
+                    f"{list(meetings_by_platform.keys())}"
+                )
 
         except Exception as e:
             logger.error(f"[Scheduler] _fallback_polling error: {e}")
@@ -355,7 +439,7 @@ class SchedulerService:
 
     def _renew_microsoft_subscriptions(self):
         try:
-            from flask import current_app
+
             from app.models.webhookModel import WebhookModel
             from app.services.tokenService import TokenService
             from app.controller.calendar.platform.microsoftCalendarService import (

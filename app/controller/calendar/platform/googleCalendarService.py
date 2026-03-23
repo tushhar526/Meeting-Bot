@@ -45,8 +45,8 @@ class GoogleCalendarService(BaseCalendarService):
             "scope": GOOGLE_SCOPES,
             "response_type": "code",
             "state": state,
-            "access_type": "offline",   # required for refresh token
-            "prompt": "consent",        # force consent screen to always get refresh token
+            "access_type": "offline",  # required for refresh token
+            "prompt": "consent",  # force consent screen to always get refresh token
         }
         return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
@@ -138,18 +138,28 @@ class GoogleCalendarService(BaseCalendarService):
             start_raw = start_data.get("dateTime", start_data.get("date", ""))
             end_raw = end_data.get("dateTime", end_data.get("date", ""))
 
-            meetings.append({
-                "id": event.get("id"),
-                "title": event.get("summary", "No Title"),
-                "start_time": TimezoneConverter.convert_to_ist_or_keep(start_raw, tz) if start_raw else "",
-                "end_time": TimezoneConverter.convert_to_ist_or_keep(end_raw, tz) if end_raw else "",
-                "meeting_link": self._extract_meeting_link(event),
-                "platform": "google",
-                "timezone": tz,
-                "all_day": "date" in start_data,
-                "location": event.get("location", ""),
-                "attendees": len(event.get("attendees", [])),
-            })
+            meetings.append(
+                {
+                    "id": event.get("id"),
+                    "title": event.get("summary", "No Title"),
+                    "start_time": (
+                        TimezoneConverter.convert_to_ist_or_keep(start_raw, tz)
+                        if start_raw
+                        else ""
+                    ),
+                    "end_time": (
+                        TimezoneConverter.convert_to_ist_or_keep(end_raw, tz)
+                        if end_raw
+                        else ""
+                    ),
+                    "meeting_link": self._extract_meeting_link(event),
+                    "platform": "google",
+                    "timezone": tz,
+                    "all_day": "date" in start_data,
+                    "location": event.get("location", ""),
+                    "attendees": len(event.get("attendees", [])),
+                }
+            )
 
         return meetings
 
@@ -166,7 +176,7 @@ class GoogleCalendarService(BaseCalendarService):
             (datetime.now(timezone.utc) + timedelta(days=7)).timestamp() * 1000
         )
         channel_data = {
-            "id": str(uuid.uuid4()),   # uuid4 — stable and unique across restarts
+            "id": str(uuid.uuid4()),  # uuid4 — stable and unique across restarts
             "type": "web_hook",
             "address": webhook_url,
             "expiration": str(expiration_ms),

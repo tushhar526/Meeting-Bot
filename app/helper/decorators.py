@@ -2,7 +2,7 @@ import time
 import logging
 from functools import wraps
 from flask import jsonify
-from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+from flask_jwt_extended import get_jwt_identity
 from app.models.userModel import userModel, UserRole, SubscriptionStatus
 
 logger = logging.getLogger(__name__)
@@ -72,89 +72,94 @@ def retry(times=3, delay=5, backoff=1):
 
 
 def require_auth(f):
-    """Decorator to require JWT authentication"""
+    """Decorator to require JWT authentication.
+    Must be used after @jwt_required() — does NOT call verify_jwt_in_request() again."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
-            verify_jwt_in_request()
+            # jwt_required() upstream already verified the token; just read the identity.
             user_id = get_jwt_identity()
-            user = userModel.get_active_users().filter_by(user_id=user_id).first()
-            
+            user = userModel.get_active_users().filter_by(user_id=int(user_id)).first()
+
             if not user or not user.is_active:
                 return jsonify({"message": "User not found or inactive"}), 401
-                
+
             return f(user, *args, **kwargs)
         except Exception as e:
+            logger.error(f"require_auth error: {e}")
             return jsonify({"message": "Authentication required"}), 401
-    
+
     return decorated_function
 
 
 def require_super_admin(f):
-    """Decorator to require super admin role"""
+    """Decorator to require super admin role.
+    Must be used after @jwt_required() — does NOT call verify_jwt_in_request() again."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
-            verify_jwt_in_request()
             user_id = get_jwt_identity()
-            user = userModel.get_active_users().filter_by(user_id=user_id).first()
-            
+            user = userModel.get_active_users().filter_by(user_id=int(user_id)).first()
+
             if not user or not user.is_active:
                 return jsonify({"message": "User not found or inactive"}), 401
-                
+
             if not user.is_super_admin():
                 return jsonify({"message": "Super admin access required"}), 403
-                
+
             return f(*args, **kwargs)
         except Exception as e:
+            logger.error(f"require_super_admin error: {e}")
             return jsonify({"message": "Authentication required"}), 401
-    
+
     return decorated_function
 
 
 def require_admin(f):
-    """Decorator to require admin role (or super admin)"""
+    """Decorator to require admin role (or super admin).
+    Must be used after @jwt_required() — does NOT call verify_jwt_in_request() again."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
-            verify_jwt_in_request()
             user_id = get_jwt_identity()
-            user = userModel.get_active_users().filter_by(user_id=user_id).first()
-            
+            user = userModel.get_active_users().filter_by(user_id=int(user_id)).first()
+
             if not user or not user.is_active:
                 return jsonify({"message": "User not found or inactive"}), 401
-                
+
             if not (user.is_admin() or user.is_super_admin()):
                 return jsonify({"message": "Admin access required"}), 403
-                
+
             return f(user, *args, **kwargs)
         except Exception as e:
+            logger.error(f"require_admin error: {e}")
             return jsonify({"message": "Authentication required"}), 401
-    
+
     return decorated_function
 
 
 def require_active_subscription(f):
-    """Decorator to require active subscription (except for super admin)"""
+    """Decorator to require active subscription (except for super admin).
+    Must be used after @jwt_required() — does NOT call verify_jwt_in_request() again."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
-            verify_jwt_in_request()
             user_id = get_jwt_identity()
-            user = userModel.get_active_users().filter_by(user_id=user_id).first()
-            
+            user = userModel.get_active_users().filter_by(user_id=int(user_id)).first()
+
             if not user or not user.is_active:
                 return jsonify({"message": "User not found or inactive"}), 401
-                
+
             # Super admins bypass subscription check
             if user.is_super_admin():
                 return f(user, *args, **kwargs)
-                
+
             if not user.has_active_subscription():
                 return jsonify({"message": "Active subscription required"}), 403
-                
+
             return f(user, *args, **kwargs)
         except Exception as e:
+            logger.error(f"require_active_subscription error: {e}")
             return jsonify({"message": "Authentication required"}), 401
-    
+
     return decorated_function

@@ -26,31 +26,47 @@ class userModel(db.Model):
     password: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     organization_name: Mapped[str] = mapped_column(String(255), nullable=True)
-    role: Mapped[str] = mapped_column(String(50), nullable=False, default=UserRole.ADMIN)
-    plan_id: Mapped[int] = mapped_column(Integer, ForeignKey("plans.plan_id"), nullable=True)
-    subscription_status: Mapped[str] = mapped_column(String(50), nullable=False, default=SubscriptionStatus.INACTIVE)
+    role: Mapped[str] = mapped_column(
+        String(50), nullable=False, default=UserRole.ADMIN
+    )
+    plan_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("plans.plan_id"), nullable=True
+    )
+    subscription_status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default=SubscriptionStatus.INACTIVE
+    )
     subscription_start_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     subscription_end_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)  # Soft delete flag
     deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     meetings: Mapped[int] = mapped_column(Integer, default=0)
 
     jobs = relationship("JobModel", back_populates="user")
     plan = relationship("PlanModel", back_populates="users")
     logs = relationship("SystemLog", back_populates="user")
-    
+    transcript = relationship("TranscriptionsModel", back_populates="user")
+
     # Import and define relationship after both models are defined
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-    
+
     @property
     def user_integrations(self):
         """Get user integrations - lazy loading to avoid circular import"""
         from app.models.userIntegrationModel import UserIntegration
-        return UserIntegration.query.filter_by(user_id=self.user_id, is_active=True).all()
+
+        return UserIntegration.query.filter_by(
+            user_id=self.user_id, is_active=True
+        ).all()
 
     def set_password(self, raw_password):
         hashed = bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt())
@@ -68,9 +84,11 @@ class userModel(db.Model):
         return self.role == UserRole.ADMIN
 
     def has_active_subscription(self):
-        return (self.subscription_status == SubscriptionStatus.ACTIVE and 
-                self.subscription_end_date and 
-                self.subscription_end_date > datetime.utcnow())
+        return (
+            self.subscription_status == SubscriptionStatus.ACTIVE
+            and self.subscription_end_date
+            and self.subscription_end_date > datetime.utcnow()
+        )
 
     def can_create_meeting(self):
         if self.is_super_admin():
@@ -114,5 +132,5 @@ class userModel(db.Model):
         """Get user by email or username (excluding deleted)"""
         return cls.query.filter(
             (cls.email == identifier) | (cls.username == identifier),
-            cls.is_deleted == False
+            cls.is_deleted == False,
         ).first()

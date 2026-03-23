@@ -16,7 +16,7 @@ from app.controller.superAdminController.subscriptionManagementController import
     get_expiring_subscriptions, extend_subscription
 )
 from flask_jwt_extended import jwt_required
-from app.helper.decorators import require_super_admin, require_auth
+from app.helper.decorators import require_super_admin, require_auth, require_admin
 
 superadmin_bp = Blueprint("superadmin_bp", __name__, url_prefix="/superadmin")
 
@@ -24,42 +24,42 @@ superadmin_bp = Blueprint("superadmin_bp", __name__, url_prefix="/superadmin")
 # Plan Management Routes
 @superadmin_bp.route("/plans", methods=["POST"])
 @jwt_required()
-@require_super_admin
-def create_plan_route():
+@require_admin
+def create_plan_route(user):
     """Create a new plan"""
-    return create_plan(request)
+    return create_plan(request, user)
 
 
 @superadmin_bp.route("/plans", methods=["GET"])
 @jwt_required()
-@require_super_admin
-def get_all_plans_route():
+@require_admin
+def get_all_plans_route(user):
     """Get all plans"""
-    return get_all_plans()
+    return get_all_plans(user)
 
 
 @superadmin_bp.route("/plans/<int:plan_id>", methods=["GET"])
 @jwt_required()
-@require_super_admin
-def get_plan_route(plan_id):
+@require_admin
+def get_plan_route(user, plan_id):
     """Get a specific plan"""
-    return get_plan(plan_id)
+    return get_plan(plan_id, user)
 
 
 @superadmin_bp.route("/plans/<int:plan_id>", methods=["PUT"])
 @jwt_required()
-@require_super_admin
-def update_plan_route(plan_id):
+@require_admin
+def update_plan_route(user, plan_id):
     """Update a plan"""
-    return update_plan(plan_id, request)
+    return update_plan(plan_id, request, user)
 
 
 @superadmin_bp.route("/plans/<int:plan_id>", methods=["DELETE"])
 @jwt_required()
-@require_super_admin
-def delete_plan_route(plan_id):
+@require_admin
+def delete_plan_route(user, plan_id):
     """Delete/deactivate a plan"""
-    return delete_plan(plan_id)
+    return delete_plan(plan_id, user)
 
 
 # User Management Routes

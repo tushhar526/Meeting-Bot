@@ -1,5 +1,5 @@
 from app.extension import db
-from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey, Text
+from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime, timezone, timedelta
 
@@ -8,6 +8,12 @@ class UserIntegration(db.Model):
     """Model to store user calendar integrations"""
 
     __tablename__ = "user_integrations"
+    __table_args__ = (
+        # One calendar account (email) can only be actively connected to ONE app user
+        # per platform. This prevents the same Gmail/Outlook being connected to
+        # multiple accounts and causing duplicate webhook triggers + bot spam.
+        UniqueConstraint("platform", "account_email", name="uq_platform_account_email"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
@@ -96,3 +102,31 @@ class UserIntegration(db.Model):
     def get_active_integrations(cls, user_id: int):
         """Get active integrations for a user"""
         return cls.query.filter_by(user_id=user_id, is_active=True).all()
+
+    @classmethod
+    def get_by_email_and_platform(cls, account_email: str, platform: str):
+        """Find any integration (any user) already using this calendar email."""
+        return cls.query.filter_by(
+            account_email=account_email, platform=platform
+        ).first()
+
+    @classmethod
+    def claim_or_reject(cls, user_id: int, platform: str, account_email: str):
+        """
+        Enforce the one-email-one-user rule at connection time.
+
+        Returns (allowed: bool, reason: str | None)
+
+        - Same user reconnecting the same email → allowed (token refresh is fine).
+        - Different user already owns this email on this platform → rejected.
+        - Nobody has it yet → allowed.
+        """
+        existing = cls.get_by_email_and_platform(account_email, platform)
+        if existing is None:
+            return True, None
+        if existing.user_id == user_id:
+            return True, None
+        return False, (
+            f"The {platform} account '{account_email}' is already connected "
+            f"to another user. Please disconnect it from that account first."
+        )
