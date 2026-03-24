@@ -23,7 +23,7 @@ class BaseBot:
         self.meeting_url = meeting_url
         self.job_id = job_id
         self.recording_path = output_path
-        self.handler = None
+        self.handler = None 
         self.pw = None
         self.browser = None
         self.context = None

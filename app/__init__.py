@@ -31,6 +31,7 @@ def create_app():
                     "GET",
                     "POST",
                     "PUT",
+                    "PATCH",
                     "DELETE",
                     "OPTIONS",
                 ],
@@ -66,7 +67,10 @@ def create_app():
     celery.conf.update(
         broker_url=app.config["CELERY_BROKER_URL"],
         result_backend=app.config["CELERY_RESULT_BACKEND"],
-        include=['app.task.transcriptTasks', 'app.task.bot_tasks'],  # Auto-discover tasks
+        include=[
+            "app.task.transcriptTasks",
+            "app.task.bot_tasks",
+        ],  # Auto-discover tasks
     )
 
     logging.basicConfig(

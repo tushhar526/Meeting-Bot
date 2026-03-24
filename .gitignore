@@ -1,9 +1,13 @@
 app.log
 app/recordings/
-/__pycache__/
+app/transcription/
+app//__pycache__/
 *.pyc
-instance/*.db
+__pycache__/
+*.py[cod]
+*.pyo
+instance/
 .env
 migrations/
-readme/
+readmeDocs/
 Meeting_bot_(FastAPI,Selenium).md
