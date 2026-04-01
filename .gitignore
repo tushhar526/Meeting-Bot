@@ -1,6 +1,7 @@
 app.log
 app/recordings/
-app/transcription/
+app/transcriptions/
+clear_transcriptions.py
 app//__pycache__/
 *.pyc
 __pycache__/
@@ -10,4 +11,4 @@ instance/
 .env
 migrations/
 readmeDocs/
-Meeting_bot_(FastAPI,Selenium).md
+debug/
