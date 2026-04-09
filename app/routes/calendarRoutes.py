@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, redirect
 import logging
 import os
 import json
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, timezone, timedelta
 from app.controller.calendar.calendarController import (
     CalendarController,
@@ -180,6 +181,7 @@ def _popup_response(status, message, data=None):
 
 
 @multi_calendar_bp.route("/platforms", methods=["GET"])
+@jwt_required()
 def get_supported_platforms():
     """Get list of supported calendar platforms"""
     try:
@@ -192,6 +194,7 @@ def get_supported_platforms():
 
 
 @multi_calendar_bp.route("/integrations", methods=["GET"])
+@jwt_required()
 def get_user_integrations():
     """Get current user's calendar integrations"""
     try:
@@ -248,6 +251,7 @@ def get_user_integrations():
 
 
 @multi_calendar_bp.route("/<platform>/auth", methods=["GET"])
+@jwt_required()
 def get_calendar_auth_url(platform):
     """Get OAuth authorization URL for specified platform"""
     try:
@@ -273,12 +277,14 @@ def get_calendar_auth_url(platform):
 
 
 @multi_calendar_bp.route("/<platform>/callback", methods=["GET"])
+@jwt_required()
 def handle_calendar_callback(platform):
     """Handle OAuth callback and exchange code for tokens"""
     try:
         code = request.args.get("code")
         state = request.args.get("state")
         error = request.args.get("error")
+        app_user_id = get_jwt_identity()
 
         if error:
             logger.error(f"{platform.title()} OAuth error: {error}")
@@ -353,7 +359,7 @@ def handle_calendar_callback(platform):
 
         try:
             result = calendar_controller.handle_callback(
-                platform, code, state, redirect_uri
+                platform, code, state, redirect_uri, app_user_id
             )
 
             # Calculate expiry time
@@ -506,7 +512,7 @@ def handle_calendar_callback(platform):
 
         except Exception as e:
             logger.error(f"Failed to process {platform} auth callback: {e}")
-            frontend_url = f"http://localhost:5173/auth/{platform}/callback?status=error&error=Failed to process authorization"
+            frontend_url = f"http://localhost:5173/auth/{platform}/callback?status=error&error={e}"
             return redirect(frontend_url)
 
     except Exception as e:
@@ -516,6 +522,7 @@ def handle_calendar_callback(platform):
 
 
 @multi_calendar_bp.route("/<platform>/events", methods=["GET"])
+@jwt_required()
 def get_calendar_events(platform):
     """Get upcoming calendar events with meeting links"""
     try:
@@ -611,6 +618,7 @@ def get_calendar_events(platform):
 
 
 @multi_calendar_bp.route("/<platform>/events/create-job", methods=["POST"])
+@jwt_required()
 def create_job_from_calendar_event(platform):
     """Create a meeting bot job from a calendar event"""
     try:
@@ -657,6 +665,7 @@ def create_job_from_calendar_event(platform):
 
 
 @multi_calendar_bp.route("/<platform>/token/refresh", methods=["POST"])
+@jwt_required()
 def refresh_calendar_token(platform):
     """Refresh access token using refresh token"""
     try:
@@ -676,6 +685,7 @@ def refresh_calendar_token(platform):
 
 
 @multi_calendar_bp.route("/<platform>/disconnect", methods=["DELETE"])
+@jwt_required()
 def disconnect_calendar(platform):
     """Disconnect calendar integration (revoke tokens)"""
     try:

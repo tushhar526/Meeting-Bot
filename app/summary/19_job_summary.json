@@ -1,0 +1,8 @@
+{
+  "summary": {
+    "discussions": [],
+    "overview": "The transcript explains a process for recording meetings, transcribing them, and generating a summary using a Llama-based AI model. It details the use of specific models, schemas for summarization, and how the system and user prompts guide the LLM to produce structured summaries.",
+    "conclusion": "In summary, the presentation outlined a clear workflow for meeting transcription and summarization, emphasizing the importance of structured prompts and schemas to extract actionable insights from meeting data."
+  },
+  "job_id": 19
+}

@@ -1,11 +1,13 @@
 import os
 import io
 import json
+from http import HTTPStatus
+from weasyprint import HTML
 from flask import jsonify, send_file
 from app.extension import db
 from app.helper.logger import get_logger
+from app.models import JobModel, get_ist_now, userModel
 from app.models.transcriptionModel import TranscriptionsModel
-from app.models.jobModel import JobModel, get_ist_now
 
 logger = get_logger(__name__)
 
@@ -72,14 +74,12 @@ def make_transcript(request, user_id):
                     200,
                 )
 
-        from app.models.userModel import userModel
-
         user = userModel.query.filter_by(user_id=user_id).first()
         username = user.username if user else f"user_{user_id}"
 
         os.makedirs(TRANSCRIPTION_DIR, exist_ok=True)
         file_path = os.path.join(
-            TRANSCRIPTION_DIR, f"job_{job_id}_{username}_transcript.json"
+            TRANSCRIPTION_DIR, f"{job_id}_job_{username}_transcript.json"
         )
 
         transcription = TranscriptionsModel(
@@ -95,7 +95,7 @@ def make_transcript(request, user_id):
             f"Transcription row created: {transcription.transcription_id} for job {job_id}"
         )
 
-        from app.task.transcriptTasks import transcribe_audio
+        from app.task.transcript_tasks import transcribe_audio
 
         transcribe_audio.delay(transcription.transcription_id)
 
@@ -116,32 +116,73 @@ def make_transcript(request, user_id):
         return jsonify({"error": f"Failed to start transcription: {str(e)}"}), 500
 
 
-def get_transcript(transcription_id, user_id):
+def get_transcript(job_id, user_id):
     """Get the full transcript content for a completed transcription."""
     try:
+
         transcription = TranscriptionsModel.query.filter_by(
-            transcription_id=transcription_id, user_id=user_id, is_deleted=False
+            job_id=job_id, user_id=user_id, is_deleted=False
         ).first()
 
         if not transcription:
-            return jsonify({"error": "Transcription not found"}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "No Transcript Found for meeting",
+                        "error": {"status": 404, "type": "TRANSCRIPT_NOT_FOUND"},
+                    }
+                ),
+                HTTPStatus.NOT_FOUND,
+            )
 
         if transcription.status != "completed":
             return (
                 jsonify(
                     {
-                        "error": "Transcription not ready yet",
-                        "status": transcription.status,
+                        "success": False,
+                        "message": "Transcription is not completed yet",
+                        "error": {
+                            "status": transcription.status,
+                            "type": "TANSCRIPT_NOT_COMPLETED",
+                        },
                     }
                 ),
-                400,
+                HTTPStatus.BAD_REQUEST,
             )
 
         if not transcription.file_path or not os.path.exists(transcription.file_path):
-            return jsonify({"error": "Transcript file not found on disk"}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Transcript Not completed successfully yet",
+                        "data": {
+                            "status": transcription.status,
+                            "transcript": transcription.to_json,
+                        },
+                    }
+                ),
+                HTTPStatus.OK,
+            )
 
         with open(transcription.file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "message": "Transcription Found successfully",
+                    "data": {
+                        "status": transcription.status,
+                        "text": data["text"],
+                        "transcript": transcription.to_json,
+                    },
+                }
+            ),
+            HTTPStatus.OK,
+        )
 
         return (
             jsonify(
@@ -316,24 +357,9 @@ def get_transcript_status(transcription_id, user_id):
             return jsonify({"error": "Transcription not found"}), 404
 
         response = {
-            "transcription_id": transcription.transcription_id,
-            "job_id": transcription.job_id,
+            "success": True,
+            "message": "Status for the required Summary is like this",
             "status": transcription.status,
-            "created_at": (
-                transcription.created_at.isoformat()
-                if transcription.created_at
-                else None
-            ),
-            "started_at": (
-                transcription.started_at.isoformat()
-                if transcription.started_at
-                else None
-            ),
-            "completed_at": (
-                transcription.completed_at.isoformat()
-                if transcription.completed_at
-                else None
-            ),
         }
 
         if transcription.status == "completed":
@@ -419,92 +445,113 @@ def download_transcript_pdf(transcription_id, user_id):
         )
         word_count = transcription.word_count or 0
 
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import cm
-            from reportlab.lib import colors
-            from reportlab.platypus import (
-                SimpleDocTemplate,
-                Paragraph,
-                Spacer,
-                HRFlowable,
-            )
+        # try:
+        #     from reportlab.lib.pagesizes import A4
+        #     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        #     from reportlab.lib.units import cm
+        #     from reportlab.lib import colors
+        #     from reportlab.platypus import (
+        #         SimpleDocTemplate,
+        #         Paragraph,
+        #         Spacer,
+        #         HRFlowable,
+        #     )
 
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(
-                buffer,
-                pagesize=A4,
-                rightMargin=2 * cm,
-                leftMargin=2 * cm,
-                topMargin=2 * cm,
-                bottomMargin=2 * cm,
-            )
+        # buffer = io.BytesIO()
+        # doc = SimpleDocTemplate(
+        #     buffer,
+        #     pagesize=A4,
+        #     rightMargin=2 * cm,
+        #     leftMargin=2 * cm,
+        #     topMargin=2 * cm,
+        #     bottomMargin=2 * cm,
+        # )
 
-            styles = getSampleStyleSheet()
-            title_style = ParagraphStyle(
-                "CustomTitle",
-                parent=styles["Heading1"],
-                fontSize=16,
-                spaceAfter=6,
-                textColor=colors.HexColor("#1a1a2e"),
-            )
-            meta_style = ParagraphStyle(
-                "Meta",
-                parent=styles["Normal"],
-                fontSize=9,
-                textColor=colors.HexColor("#6b7280"),
-                spaceAfter=4,
-            )
-            body_style = ParagraphStyle(
-                "Body",
-                parent=styles["Normal"],
-                fontSize=11,
-                leading=18,
-                textColor=colors.HexColor("#1f2937"),
-                spaceAfter=12,
-            )
+        # styles = getSampleStyleSheet()
+        # title_style = ParagraphStyle(
+        #     "CustomTitle",
+        #     parent=styles["Heading1"],
+        #     fontSize=16,
+        #     spaceAfter=6,
+        #     textColor=colors.HexColor("#1a1a2e"),
+        # )
+        # meta_style = ParagraphStyle(
+        #     "Meta",
+        #     parent=styles["Normal"],
+        #     fontSize=9,
+        #     textColor=colors.HexColor("#6b7280"),
+        #     spaceAfter=4,
+        # )
+        # body_style = ParagraphStyle(
+        #     "Body",
+        #     parent=styles["Normal"],
+        #     fontSize=11,
+        #     leading=18,
+        #     textColor=colors.HexColor("#1f2937"),
+        #     spaceAfter=12,
+        # )
 
-            story = []
-            story.append(Paragraph(meeting_title or "Meeting Transcript", title_style))
-            story.append(Paragraph(f"Platform: {platform}", meta_style))
-            story.append(Paragraph(f"Date: {completed_at}", meta_style))
-            story.append(Paragraph(f"Words: {word_count}", meta_style))
-            story.append(Spacer(1, 0.3 * cm))
-            story.append(
-                HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e5e7eb"))
-            )
-            story.append(Spacer(1, 0.5 * cm))
+        # story = []
+        # story.append(Paragraph(meeting_title or "Meeting Transcript", title_style))
+        # story.append(Paragraph(f"Platform: {platform}", meta_style))
+        # story.append(Paragraph(f"Date: {completed_at}", meta_style))
+        # story.append(Paragraph(f"Words: {word_count}", meta_style))
+        # story.append(Spacer(1, 0.3 * cm))
+        # story.append(
+        #     HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e5e7eb"))
+        # )
+        # story.append(Spacer(1, 0.5 * cm))
 
-            for para in transcript_text.split("\n"):
-                para = para.strip()
-                if para:
-                    story.append(Paragraph(para, body_style))
+        # for para in transcript_text.split("\n"):
+        #     para = para.strip()
+        #     if para:
+        #         story.append(Paragraph(para, body_style))
 
-            doc.build(story)
-            buffer.seek(0)
+        # doc.build(story)
+        # buffer.seek(0)
 
-            return send_file(
-                buffer,
-                as_attachment=True,
-                download_name=f"transcript_{transcription_id}.pdf",
-                mimetype="application/pdf",
-            )
+        html_content = f"""
+            <html>
+            <head>
+            <meta charset="UTF-8">
+            <style>
+            body {{ font-family: sans-serif; font-size: 11pt; }}
+            h1 {{ color: #1a1a2e; }}
+            .meta {{ color: #6b7280; font-size: 9pt; }}
+            </style>
+            </head>
+            <body>
+            <h1>{meeting_title}</h1>
+            <p class="meta">Platform: {platform} | Date: {completed_at} | Words: {word_count}</p>
+            <hr/>
+            <p>{transcript_text.replace(chr(10), '<br>')}</p>
+            </body>
+            </html>
+            """
 
-        except ImportError:
-            # reportlab not installed — fall back to plain text
-            logger.warning(
-                "[Transcription] reportlab not available, falling back to plain text"
-            )
-            content = f"MEETING TRANSCRIPT\n{'='*40}\nTitle:    {meeting_title}\nPlatform: {platform}\nDate:     {completed_at}\nWords:    {word_count}\n{'='*40}\n\n{transcript_text}\n"
-            buffer = io.BytesIO(content.encode("utf-8"))
-            return send_file(
-                buffer,
-                as_attachment=True,
-                download_name=f"transcript_{transcription_id}.txt",
-                mimetype="text/plain",
-            )
+        buffer = io.BytesIO()
+        HTML(string=html_content).write_pdf(buffer)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"transcript_{transcription_id}.pdf",
+            mimetype="application/pdf",
+        )
 
     except Exception as e:
-        logger.error(f"download_transcript_pdf error for user {user_id}", exception=e)
-        return jsonify({"error": f"Failed to generate PDF: {str(e)}"}), 500
+        logger.error(
+            f"download_transcript_pdf error for user {user_id} due to {str(e)}",
+            exception=e,
+        )
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Failed to generate for this transcription",
+                    "error": {"status": 404, "type": "FAILED_TO_GENERATE_PDF"},
+                }
+            ),
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )

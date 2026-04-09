@@ -5,6 +5,7 @@ from .authRoutes import *
 from .botRoutes import *
 from .calendarRoutes import *
 from .logRoutes import *
+from .summaryRoutes import *
 from .superadminRoutes import *
 from .transcriptionRoutes import *
 from .userRoutes import *

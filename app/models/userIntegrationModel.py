@@ -127,6 +127,6 @@ class UserIntegration(db.Model):
         if existing.user_id == user_id:
             return True, None
         return False, (
-            f"The {platform} account '{account_email}' is already connected "
+            f"The {platform} account is already connected "
             f"to another user. Please disconnect it from that account first."
         )

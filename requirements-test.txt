@@ -1,0 +1,11 @@
+# Testing dependencies for Meeting Bot
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+pytest-flask==1.3.0
+pytest-asyncio==0.24.0
+factory-boy==3.3.1
+faker==30.8.1
+freezegun==1.5.1
+responses==0.25.3
+testfixtures==8.3.0

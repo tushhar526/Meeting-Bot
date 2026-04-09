@@ -12,6 +12,7 @@ from app.routes import (
     bot_bp,
     auth_bp,
     user_bp,
+    summary_bp,
     webhook_receiver_bp,
     admin_bp,
     multi_calendar_bp,
@@ -57,8 +58,6 @@ def create_app():
         expose_headers=["Set-Cookie"],  # Expose cookie headers
     )
 
-    # load_dotenv() is already called at the top - no need to call again
-
     app.config.from_object(Config)
     db.init_app(app)
     jwt.init_app(app)
@@ -68,8 +67,9 @@ def create_app():
         broker_url=app.config["CELERY_BROKER_URL"],
         result_backend=app.config["CELERY_RESULT_BACKEND"],
         include=[
-            "app.task.transcriptTasks",
+            "app.task.transcript_tasks",
             "app.task.bot_tasks",
+            "app.task.summary_tasks",
         ],  # Auto-discover tasks
     )
 
@@ -87,6 +87,7 @@ def create_app():
     app.register_blueprint(transcript_bp)
     app.register_blueprint(webhook_receiver_bp)
     app.register_blueprint(superadmin_bp)
+    app.register_blueprint(summary_bp)
 
     # Initialize Meeting Bot Cron Scheduler
     with app.app_context():

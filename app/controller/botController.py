@@ -373,9 +373,7 @@ def list_recordings(user_id):
             recordings_list.append({
                 "id": recording.job_id,
                 "name": filename,
-                "meeting_title": recording.meeting_title,
                 "meeting_link": recording.meeting_link,
-                "meeting_id": recording.meeting_id,
                 "platform": recording.platform,
                 "status": recording.status,
                 "created_at": recording.created_at.isoformat() if recording.created_at else None,

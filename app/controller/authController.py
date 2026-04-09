@@ -1,5 +1,6 @@
 from app.models.userModel import userModel, UserRole, SubscriptionStatus
 from app.models.planModel import PlanModel, PlanType
+from http import HTTPStatus
 from flask import jsonify
 from app.extension import jwt
 from app.extension import db
@@ -48,22 +49,33 @@ def signup(request):
             return jsonify({"message": "Organization name is required"}), 400
 
         # Find the free plan
-        logger.info(f"Looking for free plan with plan_type='{PlanType.FREE}' and is_active=True")
-        free_plan = PlanModel.query.filter_by(plan_type=PlanType.FREE, is_active=True).first()
-        
+        logger.info(
+            f"Looking for free plan with plan_type='{PlanType.FREE}' and is_active=True"
+        )
+        free_plan = PlanModel.query.filter_by(
+            plan_type=PlanType.FREE, is_active=True
+        ).first()
+
         if not free_plan:
             logger.error("Free plan not found in database")
             # List all available plans for debugging
             all_plans = PlanModel.query.all()
-            logger.error(f"Available plans in database: {[{'id': p.plan_id, 'name': p.name, 'type': p.plan_type, 'active': p.is_active} for p in all_plans]}")
-            return jsonify({"message": "System configuration error - please contact support"}), 500
-        
+            logger.error(
+                f"Available plans in database: {[{'id': p.plan_id, 'name': p.name, 'type': p.plan_type, 'active': p.is_active} for p in all_plans]}"
+            )
+            return (
+                jsonify(
+                    {"message": "System configuration error - please contact support"}
+                ),
+                500,
+            )
+
         logger.info(f"Found free plan: {free_plan.name} (ID: {free_plan.plan_id})")
 
         # Get current time in IST
-        ist_timezone = tz('Asia/Kolkata')
+        ist_timezone = tz("Asia/Kolkata")
         current_time_ist = datetime.now(ist_timezone)
-        
+
         new_user = userModel(
             username=user_data.username,
             email=user_data.email,
@@ -72,7 +84,8 @@ def signup(request):
             subscription_status=SubscriptionStatus.ACTIVE,
             plan_id=free_plan.plan_id,
             subscription_start_date=current_time_ist,
-            subscription_end_date=current_time_ist + timedelta(days=30)  # 1 month later
+            subscription_end_date=current_time_ist
+            + timedelta(days=30),  # 1 month later
         )
 
         logger.info(f"Created user object with plan_id: {free_plan.plan_id}")
@@ -82,7 +95,7 @@ def signup(request):
 
         db.session.add(new_user)
         logger.info("User added to session")
-        
+
         db.session.commit()
         logger.info("Database transaction committed")
 
@@ -123,21 +136,48 @@ def login(request):
 
         try:
             user_data = UserLogin(**request.json)
-            logger.info(f"Login data validated for username: {user_data.username}")
+            logger.info(
+                f"Login data validated from schema for username: {user_data.username}"
+            )
         except ValidationError as e:
             logger.warning(f"Login validation failed: {e.errors()}")
             return jsonify({"error": e.errors()}), 400
 
         user = userModel.get_by_email_or_username(user_data.username)
 
-        if not user or not user.check_password(user_data.password):
-            print(f"password from client = {user_data.password} and in server {user.password}")
+        if not user:
+            logger.security(
+                f"Login failed - no such user found",
+                user_id=user.user_id if user else None,
+                details=f"username: {user_data.username}",
+            )
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "No Such User Found",
+                        "error": {"code": 401, "type": "USER_NOT_FOUND"},
+                    }
+                ),
+                HTTPStatus.NOT_FOUND,
+            )
+
+        if not user.check_password(user_data.password):
             logger.security(
                 f"Login failed - invalid credentials",
                 user_id=user.user_id if user else None,
                 details=f"username: {user_data.username}",
             )
-            return jsonify({"message": "Invalid credentials"}), 401
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Invalid Credentials",
+                        "error": {"code": 401, "type": "INVALID_CREDENTAILS"},
+                    }
+                ),
+                HTTPStatus.NOT_FOUND,
+            )
 
         access_token = create_access_token(identity=str(user.user_id))
         refresh_token = create_refresh_token(identity=str(user.user_id))
@@ -145,8 +185,9 @@ def login(request):
 
         response = jsonify(
             {
+                "success": True,
                 "message": "Login Successfull",
-                "user": user_response.model_dump(),
+                "status": user_response.model_dump(),
             }
         )
 
@@ -159,7 +200,7 @@ def login(request):
             details=f"username: {user.username}",
         )
 
-        return response, 200
+        return response, HTTPStatus.OK
     except Exception as e:
         print("Error in login goes something like this = ", str(e))
         logger.error(

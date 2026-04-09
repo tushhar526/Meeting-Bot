@@ -56,9 +56,11 @@ class JobModel(db.Model):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     user = relationship("userModel", back_populates="jobs")
+
     transcript = relationship(
         "TranscriptionsModel", back_populates="job", uselist=False
     )
+    summary = relationship("SummaryModel", back_populates="job")
 
     def save(self):
         """Save the model to database."""

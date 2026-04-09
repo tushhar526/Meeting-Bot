@@ -45,7 +45,6 @@ class NgrokWebhookManager:
         # Check if webhook base URL is explicitly set
         webhook_base_url = os.getenv("WEBHOOK_BASE_URL")
         if webhook_base_url:
-            logger.info(f"Using webhook base URL from environment: {webhook_base_url}")
             return webhook_base_url.rstrip("/")
 
         # Try to get ngrok URL

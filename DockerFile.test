@@ -1,0 +1,33 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies for testing
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy both requirements files
+COPY requirements.txt .
+COPY requirements-test.txt .
+
+# Install production dependencies first
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install test dependencies
+RUN pip install --no-cache-dir -r requirements-test.txt
+
+# Copy application code
+COPY . .
+
+# Set environment for testing
+ENV FLASK_ENV=testing
+ENV PYTHONPATH=/app
+
+# Create test user
+RUN useradd --create-home --shell /bin/bash testuser
+RUN chown -R testuser:testuser /app
+USER testuser
+
+# Default test command
+CMD ["python", "-m", "pytest", "tests/", "-v"]

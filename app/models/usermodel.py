@@ -53,7 +53,7 @@ class userModel(db.Model):
     jobs = relationship("JobModel", back_populates="user")
     plan = relationship("PlanModel", back_populates="users")
     logs = relationship("SystemLog", back_populates="user")
-    transcript = relationship("TranscriptionsModel", back_populates="user")
+    transcriptions = relationship("TranscriptionsModel", back_populates="user")
 
     # Import and define relationship after both models are defined
     def __init__(self, *args, **kwargs):
