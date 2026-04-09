@@ -1,0 +1,50 @@
+# .github/workflows/tests.yml
+
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, develop, resolving-branch ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build -f DockerFile.test -t myapp-test .
+
+      - name: Run tests
+        run: |
+          docker run --rm \
+            --network host \
+            -e FLASK_ENV=testing \
+            -e JWT_SECRET_KEY=test-secret-key \
+            -e SECRET_KEY=test-secret-key \
+            -e CELERY_BROKER_URL=redis://localhost:6379/0 \
+            -e CELERY_RESULT_BACKEND=redis://localhost:6379/0 \
+            myapp-test \
+            python -m pytest tests/ -v --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: test-results/
