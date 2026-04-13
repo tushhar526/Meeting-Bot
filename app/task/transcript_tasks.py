@@ -90,8 +90,6 @@ def transcribe_audio(self, transcription_id):
         response.raise_for_status()
         result = response.json()
 
-        print(f"Response from hugging face = {result}")
-
         transcript_text = result.get("text", "")
         if not transcript_text:
             raise ValueError("HuggingFace returned empty transcript")

@@ -123,7 +123,7 @@ def signup(request):
         return response, 201
     except Exception as e:
         logger.error(
-            "Error during user signup",
+            f"Error during user signup is like this {str(e)}",
             exception=e,
             details=f"Request data: {request.json if request else 'No request data'}",
         )

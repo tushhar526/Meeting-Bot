@@ -2,7 +2,6 @@ import os
 import io
 import json
 from http import HTTPStatus
-from weasyprint import HTML
 from flask import jsonify, send_file
 from app.extension import db
 from app.helper.logger import get_logger
@@ -445,92 +444,68 @@ def download_transcript_pdf(transcription_id, user_id):
         )
         word_count = transcription.word_count or 0
 
-        # try:
-        #     from reportlab.lib.pagesizes import A4
-        #     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        #     from reportlab.lib.units import cm
-        #     from reportlab.lib import colors
-        #     from reportlab.platypus import (
-        #         SimpleDocTemplate,
-        #         Paragraph,
-        #         Spacer,
-        #         HRFlowable,
-        #     )
-
-        # buffer = io.BytesIO()
-        # doc = SimpleDocTemplate(
-        #     buffer,
-        #     pagesize=A4,
-        #     rightMargin=2 * cm,
-        #     leftMargin=2 * cm,
-        #     topMargin=2 * cm,
-        #     bottomMargin=2 * cm,
-        # )
-
-        # styles = getSampleStyleSheet()
-        # title_style = ParagraphStyle(
-        #     "CustomTitle",
-        #     parent=styles["Heading1"],
-        #     fontSize=16,
-        #     spaceAfter=6,
-        #     textColor=colors.HexColor("#1a1a2e"),
-        # )
-        # meta_style = ParagraphStyle(
-        #     "Meta",
-        #     parent=styles["Normal"],
-        #     fontSize=9,
-        #     textColor=colors.HexColor("#6b7280"),
-        #     spaceAfter=4,
-        # )
-        # body_style = ParagraphStyle(
-        #     "Body",
-        #     parent=styles["Normal"],
-        #     fontSize=11,
-        #     leading=18,
-        #     textColor=colors.HexColor("#1f2937"),
-        #     spaceAfter=12,
-        # )
-
-        # story = []
-        # story.append(Paragraph(meeting_title or "Meeting Transcript", title_style))
-        # story.append(Paragraph(f"Platform: {platform}", meta_style))
-        # story.append(Paragraph(f"Date: {completed_at}", meta_style))
-        # story.append(Paragraph(f"Words: {word_count}", meta_style))
-        # story.append(Spacer(1, 0.3 * cm))
-        # story.append(
-        #     HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e5e7eb"))
-        # )
-        # story.append(Spacer(1, 0.5 * cm))
-
-        # for para in transcript_text.split("\n"):
-        #     para = para.strip()
-        #     if para:
-        #         story.append(Paragraph(para, body_style))
-
-        # doc.build(story)
-        # buffer.seek(0)
-
-        html_content = f"""
-            <html>
-            <head>
-            <meta charset="UTF-8">
-            <style>
-            body {{ font-family: sans-serif; font-size: 11pt; }}
-            h1 {{ color: #1a1a2e; }}
-            .meta {{ color: #6b7280; font-size: 9pt; }}
-            </style>
-            </head>
-            <body>
-            <h1>{meeting_title}</h1>
-            <p class="meta">Platform: {platform} | Date: {completed_at} | Words: {word_count}</p>
-            <hr/>
-            <p>{transcript_text.replace(chr(10), '<br>')}</p>
-            </body>
-            </html>
-            """
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.lib import colors
+        from reportlab.platypus import (
+                SimpleDocTemplate,
+                Paragraph,
+                Spacer,
+                HRFlowable,
+            )
 
         buffer = io.BytesIO()
-        HTML(string=html_content).write_pdf(buffer)
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=2 * cm,
+            leftMargin=2 * cm,
+            topMargin=2 * cm,
+            bottomMargin=2 * cm,
+        )
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "CustomTitle",
+            parent=styles["Heading1"],
+            fontSize=16,
+            spaceAfter=6,
+            textColor=colors.HexColor("#1a1a2e"),
+        )
+        meta_style = ParagraphStyle(
+            "Meta",
+            parent=styles["Normal"],
+            fontSize=9,
+            textColor=colors.HexColor("#6b7280"),
+            spaceAfter=4,
+        )
+        body_style = ParagraphStyle(
+            "Body",
+            parent=styles["Normal"],
+            fontSize=11,
+            leading=18,
+            textColor=colors.HexColor("#1f2937"),
+            spaceAfter=12,
+        )
+
+        story = []
+        story.append(Paragraph(meeting_title or "Meeting Transcript", title_style))
+        story.append(Paragraph(f"Platform: {platform}", meta_style))
+        story.append(Paragraph(f"Date: {completed_at}", meta_style))
+        story.append(Paragraph(f"Words: {word_count}", meta_style))
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(
+            HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e5e7eb"))
+        )
+        story.append(Spacer(1, 0.5 * cm))
+
+        for para in transcript_text.split("\n"):
+            para = para.strip()
+            if para:
+                story.append(Paragraph(para, body_style))
+
+        doc.build(story)
         buffer.seek(0)
 
         return send_file(

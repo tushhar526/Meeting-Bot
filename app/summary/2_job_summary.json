@@ -1,0 +1,8 @@
+{
+  "summary": {
+    "discussions": [],
+    "overview": "The meeting was a brief test session for the Meet‑ON project. Participants reviewed the summary model used last time, and this session also tested the transcription model by recording the meeting live. The transcription accuracy and resulting summary quality were planned to be evaluated. The session was held via Google Meet and scheduled through the Google Calendar API, with a bot joining automatically. The meeting ended after the tests.",
+    "conclusion": "Thank you for participating in the test. The outcomes of the transcription and summary evaluations will be compiled and shared with the team."
+  },
+  "job_id": 2
+}
