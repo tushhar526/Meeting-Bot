@@ -32,17 +32,6 @@ class Users(Base):
         onupdate=get_ist_now(),
     )
 
-    # jobs = relationship("JobModel", back_populates="user")
-    # plan = relationship("PlanModel", back_populates="users")
-    # transcriptions = relationship("TranscriptionsModel", back_populates="user")
-
-    # logs for this user
-    logs = relationship("SystemLog", back_populates="user")
-
-    # meetings for this user
-    meetings = relationship("Meetings", back_populates="user")
-    total_meetings: Mapped[int] = mapped_column(Integer, default=0)
-
     @classmethod
     def create_user(cls, user_data):
         hashed_pass = password_hasher.hash(user_data.password)
