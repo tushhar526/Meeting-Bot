@@ -11,11 +11,17 @@
 
 
 import os
+from typing import Generator
+from app.core.config import setting
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
 # 1. db url for connection
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = setting.DATABASE_URL
+
+print("DB URL =", setting.DATABASE_URL)
+print(repr(setting.DB_PASSWORD))  # Check if # and everything after is missing
+print(setting.DATABASE_URL)
 
 # 2. Engine
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
@@ -28,7 +34,7 @@ Base = declarative_base()
 
 
 # 5. Creating db instance per request
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db

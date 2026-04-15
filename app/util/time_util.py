@@ -3,8 +3,10 @@ import pytz
 
 
 def get_ist_now():
+    """Get current IST time"""
     ist = pytz.timezone("Asia/Kolkata")
-    return datetime.now(timezone.utc).astimezone(ist).replace(tzinfo=None)
+    return datetime.now(timezone.utc).astimezone(ist)
+
 
 def format_ist_datetime(dt):
     """Format datetime in readable IST format for frontend"""
