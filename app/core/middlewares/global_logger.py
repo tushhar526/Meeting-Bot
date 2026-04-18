@@ -34,3 +34,8 @@ class Logger:
         if details:
             return f"{message} | details: {details}"
         return base
+
+
+def get_logger(module_name: str) -> "Logger":
+    """Get an AppLogger instance for a module"""
+    return Logger(module_name)

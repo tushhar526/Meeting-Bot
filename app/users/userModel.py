@@ -31,11 +31,3 @@ class Users(Base):
         default=get_ist_now(),
         onupdate=get_ist_now(),
     )
-
-    @classmethod
-    def create_user(cls, user_data):
-        hashed_pass = password_hasher.hash(user_data.password)
-
-        return cls(
-            username=user_data.username, email=user_data.email, password=hashed_pass
-        )

@@ -40,7 +40,43 @@ class NotFoundError(AppException):
     error_code = "not_found"
 
 
-class AlredyExistError(AppException):
-    default_message = "Workspace error"
+class AlreadyExistError(AppException):
+    default_message = "Already Exists"
     status_code = HTTPStatus.CONFLICT
-    error_code = "workspace_error"
+    error_code = "entity_already_error"
+
+
+class OTPExpiredError(AppException):
+    default_message = "OTP has expired"
+    status_code = HTTPStatus.BAD_REQUEST
+    error_code = "otp_expired"
+
+
+class InvalidOTPError(AppException):
+    default_message = "Invalid OTP"
+    status_code = HTTPStatus.BAD_REQUEST
+    error_code = "invalid_otp"
+
+
+class MissingVerificationToken(AppException):
+    default_message = "Verification Token is missing"
+    status_code = HTTPStatus.BAD_REQUEST
+    error_code = "missing_verification_token"
+
+
+class UserNotFoundError(AppException):
+    default_message = "Invalid request"
+    status_code = HTTPStatus.BAD_REQUEST
+    error_code = "user_not_found"
+
+
+class InvalidVerificationToken(AppException):
+    default_message = "Invalid or expired verification token"
+    status_code = HTTPStatus.UNAUTHORIZED
+    error_code = "invalid_verification_token"
+
+
+class VerificationEmailMismatch(AppException):
+    default_message = "Verification token does not match email"
+    status_code = HTTPStatus.UNAUTHORIZED
+    error_code = "verification_email_mismatch"

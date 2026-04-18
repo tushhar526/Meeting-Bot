@@ -3,7 +3,7 @@ import os
 import sys
 from sqlalchemy import create_engine
 from sqlalchemy import pool
-from app import Logs, Meetings, Users, setting
+from app import Users, setting
 
 from alembic import context
 

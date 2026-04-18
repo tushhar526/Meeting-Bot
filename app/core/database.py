@@ -19,10 +19,6 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 # 1. db url for connection
 DATABASE_URL = setting.DATABASE_URL
 
-print("DB URL =", setting.DATABASE_URL)
-print(repr(setting.DB_PASSWORD))  # Check if # and everything after is missing
-print(setting.DATABASE_URL)
-
 # 2. Engine
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 

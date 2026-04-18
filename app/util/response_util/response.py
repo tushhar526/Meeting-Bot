@@ -17,7 +17,7 @@ class MetaData(BaseModel):
 class SuccessResponse(BaseModel, Generic[T]):
     success: bool = True
     message: str
-    data: T
+    data: Optional[T] = None
     meta: Optional[MetaData] = None
 
 
