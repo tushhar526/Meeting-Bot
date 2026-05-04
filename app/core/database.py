@@ -14,6 +14,7 @@ import os
 from typing import Generator
 from app.core.config import setting
 from sqlalchemy import create_engine
+from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
 # 1. db url for connection
@@ -34,5 +35,19 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+    finally:
+        db.close()
+
+
+# 6. Mannual Db session context manager for background task
+@contextmanager
+def get_db_session():
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

@@ -1,11 +1,12 @@
 from sqlalchemy.orm import Session
-from app.core import password_hasher, generate_token, decode_token, redis_client
+from app.core.security import password_hasher, generate_token, decode_token
+from app.core.redis import redis_client
 from app.users.userModel import Users
 from sqlalchemy.exc import IntegrityError
 from .authSchema import RegisterUser, LoginUser, UserCheckResponse, ResetPasswordSchema
 from app.core.middlewares.global_logger import get_logger
 from .verification_service import validate_verification_token
-from app.util import (
+from app.util.response_util.custom_exception import (
     AlreadyExistError,
     AuthenticationError,
     VerificationEmailMismatch,
@@ -13,14 +14,14 @@ from app.util import (
     UserNotFoundError,
 )
 
-logger = get_logger("AUTH")
+logger = get_logger("AUTH_SERVICE")
 
 
 async def signup_service(db: Session, data: RegisterUser, verification_token: str):
     try:
         logger.info("User signup attempt initiated")
 
-        stored_email = validate_verification_token(
+        stored_email = await validate_verification_token(
             verification_token=verification_token
         )
 
@@ -40,13 +41,15 @@ async def signup_service(db: Session, data: RegisterUser, verification_token: st
             logger.warning(f"User with this username already exists {data.username}")
             raise AlreadyExistError("User already exists")
 
-        hashed_password = password_hasher(data.password)
+        hashed_password = password_hasher.hash(data.password)
+        bot_alias = f"{data.username}'s Meeting bot"
 
         user = Users(
             email=data.email,
             username=data.username,
             password=hashed_password,
             organization_name=data.organization_name,
+            bot_alias=bot_alias,
         )
 
         db.add(user)
@@ -59,8 +62,11 @@ async def signup_service(db: Session, data: RegisterUser, verification_token: st
         access_token = generate_token("access", user.id)
         refresh_token = generate_token("refresh", user.id)
 
+        # Convert SQLAlchemy user to Pydantic model for serialization
+        user_response = UserCheckResponse.model_validate(user)
+
         result = {
-            "user": user,
+            "user": user_response,
             "access_token": access_token,
             "refresh_token": refresh_token,
         }
@@ -98,8 +104,11 @@ def login_service(db: Session, data: LoginUser):
         access_token = generate_token("access", user.id)
         refresh_token = generate_token("refresh", user.id)
 
+        # Convert SQLAlchemy user to Pydantic model for serialization
+        user_response = UserCheckResponse.model_validate(user)
+
         result = {
-            "user": user,
+            "user": user_response,
             "access_token": access_token,
             "refresh_token": refresh_token,
         }
@@ -134,18 +143,18 @@ def check_token_service(user_id: int, db: Session):
     user = db.query(Users).filter(Users.id == user_id).first()
 
     if not user:
-        logger.warning("Token validation failed - invalid user_id", user_id=user_id)
+        logger.warning(f"Token validation failed - invalid user_id: {user_id}")
         raise AuthenticationError("Invalid token")
 
     user_response = UserCheckResponse.model_validate(user)
 
-    logger.info("Token validated successfully", user_id=user_id)
+    logger.info(f"Token validated successfully for user_id: {user_id}")
 
     return {"data": user_response}
 
 
 async def update_password_service(
-    db: Session, verification_token: str, data: ResetPasswordSchema
+    db: Session, data: ResetPasswordSchema, verification_token: str
 ):
     try:
         logger.info("Update Password Service entered")
@@ -162,6 +171,10 @@ async def update_password_service(
         db.commit()
 
         await redis_client.delete(f"verify:{verification_token}")
+
+        logger.info("Password updated successfully")
+
+        return {"user_id": user.id, "email": user.email}
 
     except AppException:
         db.rollback()

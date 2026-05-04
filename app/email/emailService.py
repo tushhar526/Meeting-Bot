@@ -1,8 +1,18 @@
 from fastapi.concurrency import run_in_threadpool
-from app.core import send_signup_otp_email, setting, send_forgot_password_email
-from app.util import AppException, InvalidOTPError, OTPExpiredError
+from app.core.email import send_signup_otp_email, send_forgot_password_email
+from app.core.config import setting
+from app.util.response_util.custom_exception import (
+    AppException,
+    AlreadyExistError,
+    InvalidOTPError,
+    OTPExpiredError,
+)
 from .emailSchema import SendEmailSchema, VerifyEmailSchema, VerifyOTPResponse
-from app.core import redis_client, generate_OTP, get_logger, generate_token
+from app.core.redis import redis_client
+from app.core.security import generate_OTP, generate_token
+from app.core.middlewares.global_logger import get_logger
+from app.users.userModel import Users
+from sqlalchemy.orm import Session
 from .email_enum import EmailType
 
 
@@ -15,10 +25,18 @@ EMAIL_SENDER_MAP = {
 }
 
 
-async def send_verification_email_service(data: SendEmailSchema, email_type: str):
+async def send_verification_email_service(
+    db: Session, data: SendEmailSchema, email_type: str
+):
     otp_stored = False
 
     try:
+        existing_user = db.query(Users).filter(Users.email == data.email).first()
+
+        if existing_user:
+            logger.warning(f"User with this email already exists {data.email}")
+            raise AlreadyExistError("User already exists")
+
         otp = generate_OTP()
 
         await redis_client.set(f"otp:{data.email}", otp, ex=setting.REDIS_DATA_EXPIRE)
@@ -51,24 +69,32 @@ async def send_verification_email_service(data: SendEmailSchema, email_type: str
 
 async def verify_otp_service(data: VerifyEmailSchema):
     try:
-        stored_otp_bytes = await redis_client.get(f"otp:{data.email}")
+        logger.info(f"OTP verification attempt for email: {data.email[:10]}...")
 
-        if not stored_otp_bytes:
-            raise OTPExpiredError("This Otp is Expired")
+        stored_otp = await redis_client.get(f"otp:{data.email}")
 
-        stored_otp = stored_otp_bytes.decode()
+        if not stored_otp:
+            logger.warning(f"OTP not found or expired for email: {data.email[:10]}...")
+            raise OTPExpiredError("This OTP is expired")
 
         if data.otp != stored_otp:
-            raise InvalidOTPError("The Entered Otp is Invalid")
+            logger.warning(f"Invalid OTP entered for email: {data.email[:10]}...")
+            raise InvalidOTPError("The entered OTP is invalid")
 
         await redis_client.delete(f"otp:{data.email}")
 
         verification_token = generate_token("verification", data.email)
+        redis_key = f"verify:{verification_token}"
 
         await redis_client.set(
-            f"verify:{verification_token}",
+            redis_key,
             data.email,
-            ex=setting.VERIFICATION_TOKEN_EXPIRE,
+            ex=int(setting.VERIFICATION_TOKEN_EXPIRE),
+        )
+
+        logger.info(
+            f"Verification token generated and stored for email: {data.email[:10]}... "
+            f"(expires in {setting.VERIFICATION_TOKEN_EXPIRE}s)"
         )
 
         return VerifyOTPResponse(

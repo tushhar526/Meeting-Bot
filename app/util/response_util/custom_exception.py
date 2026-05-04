@@ -11,8 +11,15 @@ class AppException(Exception):
     status_code = HTTPStatus.BAD_REQUEST
     error_code = "app_error"
 
-    def __init__(self, message: str = None):
+    def __init__(
+        self,
+        message: str = None,
+        status_code: HTTPStatus = None,
+        error_code: str = None,
+    ):
         self.message = message or self.default_message
+        self.status_code = status_code or self.status_code
+        self.error_code = error_code or self.error_code
         super().__init__(self.message)
 
 
@@ -24,7 +31,7 @@ class AuthenticationError(AppException):
 
 class AccessTokenExpired(AppException):
     default_message = "Access token expired"
-    status_code = HTTPStatus.REQUEST_TIMEOUT
+    status_code = HTTPStatus.UNAUTHORIZED
     error_code = "acces_token_expired"
 
 
@@ -80,3 +87,53 @@ class VerificationEmailMismatch(AppException):
     default_message = "Verification token does not match email"
     status_code = HTTPStatus.UNAUTHORIZED
     error_code = "verification_email_mismatch"
+
+
+# Exceptions for Retry logic in celery's worker env
+
+
+class RetryException(AppException):
+    """Exceptions which allow the bot to retry joining the meeting"""
+
+    pass
+
+
+class NoRetryException(AppException):
+    """Exceptions which don't allow the bot to retry joining the meeting"""
+
+    pass
+
+
+class JoinDeniedError(NoRetryException):
+    default_message = "Join request was denied by host"
+    error_code = "join_denied"
+
+
+class WaitingRoomTimeoutError(NoRetryException):
+    default_message = "Not admitted within timeout"
+    error_code = "waiting_timeout"
+
+
+class DirectJoinTimeoutError(RetryException):
+    default_message = "Failed to enter meeting after direct join"
+    error_code = "direct_join_timeout"
+
+
+class JoinButtonNotFoundError(RetryException):
+    default_message = "Join button not found"
+    error_code = "join_button_missing"
+
+
+class BotDetection(RetryException):
+    default_message = "Bot was Detected before joining"
+    error_code = "bot_detection"
+
+
+class JoinProcessError(RetryException):
+    default_message = "Unexpected error during join process"
+    error_code = "join_process_error"
+
+
+class RecordingError(NoRetryException):
+    default_message = "Recording failed after successful join"
+    error_code = "recording_error"

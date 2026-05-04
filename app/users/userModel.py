@@ -1,7 +1,7 @@
 from sqlalchemy import Integer, String, DateTime, Boolean, Enum as SQLEnum
 from sqlalchemy.orm import relationship, Mapped, mapped_column
-from app.core import password_hasher, Base
-from app.util import get_ist_now
+from app.core.database import Base
+from app.util.time_util import get_ist_now
 from enum import Enum
 from datetime import datetime, timezone
 
@@ -24,10 +24,15 @@ class Users(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)  # Soft delete flag
-    deleted_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_ist_now())
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=get_ist_now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         default=get_ist_now(),
         onupdate=get_ist_now(),
     )
+
+    # meeting_related
+    meetings = relationship("Meetings", back_populates="user")
+    bot_alias: Mapped[str] = mapped_column(String, nullable=False)
+    total_meetings: Mapped[int] = mapped_column(Integer, default=0)

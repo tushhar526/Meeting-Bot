@@ -16,11 +16,11 @@ def generate_token(token_type: str, subject: str):
     if not config:
         raise ValueError(f"Invalid token type: {token_type}")
 
-    expire = config["expire"]
+    expire = config["expiry"]
 
     payload = {
         "token_type": token_type,
-        "sub": subject,  # email OR user_id
+        "sub": str(subject),  # JWT sub must be a string
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(seconds=expire),
     }
@@ -33,7 +33,12 @@ def decode_token(token):
     try:
         payload = jwt.decode(token, setting.SECRET_KEY, algorithms=[setting.ALGORITHM])
 
-        user_id = payload["sub"]
+        sub = payload["sub"]
+        # Try to convert to int (for user_id), otherwise keep as string (for email)
+        try:
+            user_id = int(sub)
+        except ValueError:
+            user_id = sub  # Keep as string for email
 
         if payload.get("token_type") != "refresh":
             raise AuthenticationError("Invalid token type")

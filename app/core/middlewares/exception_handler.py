@@ -1,6 +1,6 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from app.util import AppException
+from app.util.response_util.custom_exception import AppException
 from http import HTTPStatus
 from fastapi.exceptions import RequestValidationError
 

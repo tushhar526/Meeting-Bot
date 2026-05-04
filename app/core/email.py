@@ -1,7 +1,10 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from app.core import setting
+from app.core.config import setting
+from app.core.middlewares.global_logger import get_logger
+
+logger = get_logger("EMAIL_CORE")
 
 
 def send_otp_email(email: str, username: str, otp: str) -> bool:
@@ -22,11 +25,11 @@ def send_otp_email(email: str, username: str, otp: str) -> bool:
             Meton
         """
 
-    sender_email = setting.SMTP_HOST
+    sender_email = setting.SMTP_USER
     sender_password = setting.SMTP_PASSWORD
 
     message = MIMEMultipart()
-    message["From"] = sender_email
+    message["From"] = setting.SMTP_FROM or sender_email
     message["To"] = email
     message["Subject"] = subject
 
@@ -39,7 +42,7 @@ def send_otp_email(email: str, username: str, otp: str) -> bool:
             server.send_message(message)
         return True
     except Exception as e:
-        # print("Email error:", str(e))  # optional logging
+        logger.error(f"Email error: {str(e)}")
         return False
 
 
@@ -88,11 +91,11 @@ Meton
 
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
-    sender_email = setting.SMTP_HOST
+    sender_email = setting.SMTP_USER
     sender_password = setting.SMTP_PASSWORD
 
     message = MIMEMultipart()
-    message["From"] = sender_email
+    message["From"] = setting.SMTP_FROM or sender_email
     message["To"] = to_email
     message["Subject"] = subject
 
@@ -105,4 +108,5 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
             server.send_message(message)
         return True
     except Exception as e:
+        logger.error(f"Email error: {str(e)}")
         return False

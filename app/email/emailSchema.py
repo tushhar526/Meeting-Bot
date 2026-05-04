@@ -1,4 +1,10 @@
+from enum import Enum
 from pydantic import BaseModel, EmailStr
+
+
+class EmailType(str, Enum):
+    VERIFICATION = "verification"
+    FORGOT_PASSWORD = "forgot_password"
 
 
 class SendEmailSchema(BaseModel):

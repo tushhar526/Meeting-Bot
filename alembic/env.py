@@ -3,7 +3,10 @@ import os
 import sys
 from sqlalchemy import create_engine
 from sqlalchemy import pool
-from app import Users, setting
+from app.users.userModel import Users
+from app.meetings.meetingModel import Meetings
+from app.audio.audioModel import Audio
+from app.core.config import setting
 
 from alembic import context
 

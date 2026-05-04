@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from app.users.userModel import UserRole
-from app.util import PasswordStr
+from app.util.security_validators import PasswordStr
 
 
 class RegisterUser(BaseModel):
@@ -17,6 +17,8 @@ class LoginUser(BaseModel):
 
 
 class UserCheckResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
     id: int
     username: str
     email: EmailStr
