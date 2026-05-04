@@ -80,7 +80,6 @@ class ZoomJoin(ScreenshotMixin):
             self.page.goto(self.url)
             self.page.wait_for_load_state("networkidle")
             logger.info("Zoom page loaded successfully")
-            self._take_screenshot("page_loaded", platform="zoom")
 
             time.sleep(random.uniform(2, 5))
 
@@ -89,24 +88,20 @@ class ZoomJoin(ScreenshotMixin):
                 "input[type='text'], input[placeholder='name']"
             )
             if not name_input.is_visible():
-                self._take_screenshot("name_input_not_found", platform="zoom")
                 raise JoinButtonNotFoundError("Name input field not found")
 
             name_input.fill(self.bot_name)
             logger.info(f"Filled name field with '{self.bot_name}'")
-            self._take_screenshot("name_filled", platform="zoom")
 
             time.sleep(random.uniform(2, 4))
 
             # Click join button and handle waiting room
             join_btn = self.page.get_by_role("button", name=re.compile("Join"))
             if not join_btn.is_visible():
-                self._take_screenshot("join_button_not_found", platform="zoom")
                 raise JoinButtonNotFoundError("Join button not found")
 
             logger.info("Clicking join button")
             join_btn.click()
-            self._take_screenshot("join_clicked", platform="zoom")
 
             # Wait for page to transition after clicking join
             time.sleep(3)
@@ -116,22 +111,18 @@ class ZoomJoin(ScreenshotMixin):
             logger.info("Checking if bot is in waiting room...")
             is_waiting_room = self._check_waiting_room()
             logger.info(f"Waiting room check result: {is_waiting_room}")
-            self._take_screenshot("waiting_room_checked", platform="zoom")
 
             if is_waiting_room:
                 logger.info("Join request sent — confirming waiting room entry...")
-                self._take_screenshot("waiting_for_room", platform="zoom")
                 if not self._wait_until_waiting_room(timeout=15):
                     logger.error(
                         "Never landed in waiting room after clicking join — click may not have registered"
                     )
-                    self._take_screenshot("waiting_room_entry_failed", platform="zoom")
                     raise JoinProcessError(
                         "Failed to enter waiting room after clicking join"
                     )
 
                 logger.info("Waiting room confirmed — waiting for host to admit...")
-                self._take_screenshot("in_waiting_room", platform="zoom")
                 self._update_bot(
                     bot_status=BotStatus.WAITING_ROOM,
                     waiting_room_entered_at=get_ist_now(),
@@ -142,7 +133,6 @@ class ZoomJoin(ScreenshotMixin):
                 if not admitted:
                     # Check for denial first (higher priority than timeout)
                     if self._is_denied():
-                        self._take_screenshot("join_denied", platform="zoom")
                         self._update_bot(bot_status=BotStatus.DENIED)
                         self._join_denied = True
                         logger.error(
@@ -152,7 +142,6 @@ class ZoomJoin(ScreenshotMixin):
 
                     # Not denied, just timeout — set CANCELLED and don't retry
                     self._update_bot(bot_status=BotStatus.CANCELLED)
-                    self._take_screenshot("waiting_timeout", platform="zoom")
                     logger.error("Waiting room timeout — bot was never admitted")
                     raise WaitingRoomTimeoutError()
 
@@ -161,13 +150,11 @@ class ZoomJoin(ScreenshotMixin):
                     bot_join_time=get_ist_now(),
                     started_at=get_ist_now(),
                 )
-                self._take_screenshot("inside_meeting", platform="zoom")
                 logger.info("Bot confirmed inside meeting")
 
             else:
                 # Even for direct joins, wait for in-call UI to confirm we're in.
                 if not self._wait_until_inside(timeout=30):
-                    self._take_screenshot("direct_join_timeout", platform="zoom")
                     logger.error("Direct join timed out — never detected in-call UI")
                     raise DirectJoinTimeoutError()
                 self._update_bot(
@@ -175,17 +162,14 @@ class ZoomJoin(ScreenshotMixin):
                     bot_join_time=get_ist_now(),
                     started_at=get_ist_now(),
                 )
-                self._take_screenshot("inside_meeting_direct", platform="zoom")
                 logger.info("Bot confirmed inside meeting (direct join)")
 
-            self._take_screenshot("join_success", platform="zoom")
             return True
 
         except Exception as exc:
 
             # Set status for non-retryable exceptions before re-raising
             if isinstance(exc, JoinDeniedError):
-                self._take_screenshot("join_denied_error", platform="zoom")
                 self._update_bot(bot_status=BotStatus.DENIED)
                 self._join_denied = True
                 raise
@@ -202,14 +186,12 @@ class ZoomJoin(ScreenshotMixin):
 
             # Check for denial in generic exceptions
             if self._is_denied():
-                self._take_screenshot("access_denied", platform="zoom")
                 self._update_bot(bot_status=BotStatus.DENIED)
                 self._join_denied = True
                 logger.error("Access denied during join process")
                 raise JoinDeniedError()
 
             logger.error(f"Zoom join error: {exc}")
-            self._take_screenshot(f"error_{type(exc).__name__}", platform="zoom")
 
             self._update_bot(retry_count=lambda x: x + 1)
             raise JoinProcessError()

@@ -76,39 +76,32 @@ class TeamsJoin(ScreenshotMixin):
             self.page.goto(self.url)
             self.page.wait_for_load_state("networkidle")
             logger.info("Page loaded")
-            self._take_screenshot("page_loaded", platform="microsoft")
 
             time.sleep(random.uniform(2, 5))
 
             # Handle browser continuation if needed
             self._step_continue_on_browser()
-            self._take_screenshot("browser_continued", platform="microsoft")
 
             # Handle audio/video settings
             self._step_no_av()
-            self._take_screenshot("av_handled", platform="microsoft")
 
             # Fill in bot name
             self._step_fill_name()
-            self._take_screenshot("name_filled", platform="microsoft")
 
             time.sleep(random.uniform(2, 4))
 
             # Click join button
             logger.info("Clicking join button")
             self._step_join_now()
-            self._take_screenshot("join_clicked", platform="microsoft")
 
             # Wait a moment for the page to transition
             time.sleep(3)
 
             # Check if we landed in waiting room (lobby)
             is_waiting_room = self._check_waiting_room()
-            self._take_screenshot("waiting_room_checked", platform="microsoft")
 
             if is_waiting_room:
                 logger.info("Detected waiting room — waiting for host to admit...")
-                self._take_screenshot("in_waiting_room", platform="microsoft")
                 self._update_bot(
                     bot_status=BotStatus.WAITING_ROOM,
                     waiting_room_entered_at=get_ist_now(),
@@ -121,7 +114,6 @@ class TeamsJoin(ScreenshotMixin):
                 if not admitted:
                     # Check for denial first (higher priority than timeout)
                     if self._is_denied():
-                        self._take_screenshot("join_denied", platform="microsoft")
                         self._update_bot(bot_status=BotStatus.DENIED)
                         self._join_denied = True
                         logger.error(
@@ -131,7 +123,6 @@ class TeamsJoin(ScreenshotMixin):
 
                     # Not denied, just timeout — set CANCELLED and don't retry
                     self._update_bot(bot_status=BotStatus.CANCELLED)
-                    self._take_screenshot("waiting_timeout", platform="microsoft")
                     logger.error("Waiting room timeout — bot was never admitted")
                     raise WaitingRoomTimeoutError()
 
@@ -140,14 +131,12 @@ class TeamsJoin(ScreenshotMixin):
                     bot_join_time=get_ist_now(),
                     started_at=get_ist_now(),
                 )
-                self._take_screenshot("inside_meeting", platform="microsoft")
                 logger.info("Bot confirmed inside meeting")
 
             else:
                 # Not in waiting room — check if we got directly into meeting
                 logger.info("Not in waiting room — checking if directly joined...")
                 if not self._wait_until_inside(timeout=30):
-                    self._take_screenshot("direct_join_timeout", platform="microsoft")
                     logger.error("Direct join timed out — never detected in-call UI")
                     raise DirectJoinTimeoutError()
                 self._update_bot(
@@ -155,17 +144,14 @@ class TeamsJoin(ScreenshotMixin):
                     bot_join_time=get_ist_now(),
                     started_at=get_ist_now(),
                 )
-                self._take_screenshot("inside_meeting_direct", platform="microsoft")
                 logger.info("Bot confirmed inside meeting (direct join)")
 
-            self._take_screenshot("join_success", platform="microsoft")
             return True
 
         except Exception as exc:
 
             # Set status for non-retryable exceptions before re-raising
             if isinstance(exc, JoinDeniedError):
-                self._take_screenshot("join_denied_error", platform="microsoft")
                 self._update_bot(bot_status=BotStatus.DENIED)
                 self._join_denied = True
                 raise
@@ -184,14 +170,12 @@ class TeamsJoin(ScreenshotMixin):
 
             # Check for denial in generic exceptions
             if self._is_denied():
-                self._take_screenshot("access_denied", platform="microsoft")
                 self._update_bot(bot_status=BotStatus.DENIED)
                 self._join_denied = True
                 logger.error("Access denied during join process")
                 raise JoinDeniedError()
 
             logger.error(f"Teams join error: {exc}")
-            self._take_screenshot(f"error_{type(exc).__name__}", platform="microsoft")
 
             self._update_bot(retry_count=lambda x: x + 1)
             raise JoinProcessError()
