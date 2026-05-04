@@ -8,9 +8,9 @@ from app.util.time_util import get_ist_now
 from playwright.sync_api import sync_playwright
 
 # from playwright_stealth import stealth_sync
-from .platforms.google.googleBotJoin import MeetJoin
-from .platforms.microsoft.teamsBotJoin import TeamsJoin
-from .platforms.zoom.zoomBotJoin import ZoomJoin
+from .platforms.googleBotJoin import MeetJoin
+from .teamsBotJoin import TeamsJoin
+from .zoomBotJoin import ZoomJoin
 from app.meetings.meetingModel import BotStatus, MeetingPlatform
 from app.util.response_util.custom_exception import (
     RecordingError,
